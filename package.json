@@ -1,0 +1,10 @@
+{
+  "name": "lifeflow",
+  "private": true,
+  "version": "0.0.0",
+  "description": "LifeFlow AI - monorepo (Fase 0: esqueleto, sem scripts de build/teste ainda)",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

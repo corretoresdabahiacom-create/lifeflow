@@ -1,0 +1,17 @@
+node_modules/
+dist/
+build/
+.wrangler/
+.dev.vars
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+coverage/
+.vite/
+.supabase/
+supabase/.temp/
+supabase/.branches/
+*.pem
+*.key
