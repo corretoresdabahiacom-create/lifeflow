@@ -1,0 +1,78 @@
+rules_version = '2';
+
+// Segurança de dados do LifeFlow (equivalente à RLS do contrato original; ver DECISIONS D-004).
+// Princípios:
+//  - negado por padrão;
+//  - dados pessoais ficam sob users/{uid} e só o dono acessa;
+//  - permissões separadas por operação (get, list, create, update, delete);
+//  - o campo `uid` do documento deve ser igual ao do caminho e é imutável;
+//  - nenhuma regra genérica permissiva.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // ---- Perfil: users/{uid} ----
+    match /users/{uid} {
+
+      function validProfile() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['uid', 'displayName', 'locale', 'timezone', 'currency', 'createdAt', 'updatedAt'])
+          && d.keys().hasAll(['uid', 'displayName', 'locale', 'timezone', 'currency', 'createdAt', 'updatedAt'])
+          && d.uid == uid
+          && d.displayName is string && d.displayName.size() > 0 && d.displayName.size() <= 80
+          && d.locale is string && d.locale.matches('^[a-z]{2}(-[A-Z]{2})?$')
+          && d.timezone is string && d.timezone.size() > 0 && d.timezone.size() <= 64
+          && d.currency is string && d.currency.matches('^[A-Z]{3}$')
+          && d.createdAt is string
+          && d.updatedAt is string;
+      }
+
+      allow get: if isOwner(uid);
+      allow list: if false;
+      allow create: if isOwner(uid) && validProfile();
+      allow update: if isOwner(uid)
+        && validProfile()
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.createdAt == resource.data.createdAt;
+      // A exclusão de conta é um fluxo controlado (fase futura), não uma operação do cliente.
+      allow delete: if false;
+
+      // ---- Preferências: users/{uid}/preferences/{key} (documento único "app") ----
+      match /preferences/{key} {
+
+        function validPreferences() {
+          let d = request.resource.data;
+          return key == 'app'
+            && d.keys().hasOnly(['uid', 'theme', 'confirmCreations', 'quietHoursStart', 'quietHoursEnd', 'updatedAt'])
+            && d.keys().hasAll(['uid', 'theme', 'confirmCreations', 'quietHoursStart', 'quietHoursEnd', 'updatedAt'])
+            && d.uid == uid
+            && d.theme in ['light', 'dark', 'system']
+            && d.confirmCreations is bool
+            && d.quietHoursStart is string && d.quietHoursStart.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
+            && d.quietHoursEnd is string && d.quietHoursEnd.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
+            && d.updatedAt is string;
+        }
+
+        allow get: if isOwner(uid);
+        allow list: if isOwner(uid);
+        allow create: if isOwner(uid) && validPreferences();
+        allow update: if isOwner(uid)
+          && validPreferences()
+          && request.resource.data.uid == resource.data.uid;
+        allow delete: if isOwner(uid);
+      }
+    }
+
+    // Tudo o que não foi liberado acima é negado.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

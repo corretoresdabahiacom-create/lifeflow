@@ -1,0 +1,12 @@
+name = "lifeflow-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Nenhum destes valores é segredo. Substitua pelo projeto Firebase real no deploy.
+# O Worker NÃO possui credencial de conta de serviço: ele repassa o token do usuário.
+[vars]
+FIREBASE_PROJECT_ID = "demo-lifeflow"
+ALLOWED_ORIGIN = "http://localhost:5173"
+
+# Para desenvolvimento local com o emulador do Firestore, use .dev.vars (ignorado pelo Git):
+#   FIRESTORE_BASE_URL=http://127.0.0.1:8080

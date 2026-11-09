@@ -2,8 +2,16 @@
 
 ## [Não lançado]
 
+### Fase 1 — Fundação (2026-11-09)
+- Substituição do Supabase por Firebase (Firestore + Auth), D-004; modelo `deepseek-flash` registrado (D-005).
+- Monorepo pnpm: `apps/web`, `workers/api`, `packages/shared`, `firebase`.
+- Worker: validação de JWT do Firebase (RS256, `iss`, `aud`, `exp`, `sub`), cliente do Firestore por
+  requisição com o token do usuário, rotas `/healthz`, `/v1/me`, `/v1/profile`, `/v1/preferences`.
+- Firestore Security Rules por operação, negado por padrão, `uid` imutável.
+- Frontend: login/cadastro/logout, rota protegida, layout responsivo, tema claro/escuro, PWA básica.
+- Testes: 57 passando em `pnpm test`; testes de regras escritos, **não executados** localmente.
+- CI no GitHub Actions (verify + firestore-rules).
+
 ### Fase 0 — Inspeção e inicialização (2026-11-09)
 - Repositório encontrado vazio; relatório apresentado e inicialização autorizada.
-- Criados esqueleto do monorepo, `.gitignore`, `.env.example`, `pnpm-workspace.yaml`.
-- Criada a documentação permanente (Parte O). Nenhum código de aplicação.
-- Nenhum teste executado (não há código a testar).
+- Esqueleto do monorepo e documentação permanente (Parte O). Nenhum código de aplicação.

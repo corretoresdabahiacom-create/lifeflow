@@ -1,3 +1,5 @@
+> **EMENDA (2026-11-09):** por decisão do responsável, o Supabase (PostgreSQL, Auth, RLS) foi substituído por Firebase (Firestore, Firebase Auth, Security Rules). Onde este contrato diz "Supabase", "migrations" ou "RLS", leia conforme `docs/DECISIONS.md` D-004. O texto original abaixo foi mantido sem alterações.
+
 LIFEFlow AI — MASTER PROMPT V2.0
 
 Siga rigorosamente as instruções.

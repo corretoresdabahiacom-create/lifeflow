@@ -2,36 +2,50 @@
 
 SaaS de gestão financeira pessoal, agenda, tarefas e assistente inteligente.
 
-**Status:** Fase 0 concluída (repositório inicializado, sem código de aplicação).
-A Fase 1 só começa com aprovação expressa do responsável pelo produto.
+**Status:** Fase 1 (fundação) implementada, aguardando aprovação. Resultados e pendências em
+[`docs/PHASE_01_FOUNDATION.md`](docs/PHASE_01_FOUNDATION.md).
 
 ## Contrato do produto
 
-O contrato mestre está em [`docs/MASTER_PROMPT.md`](docs/MASTER_PROMPT.md). Toda decisão
-arquitetural fica registrada em [`docs/DECISIONS.md`](docs/DECISIONS.md).
+Contrato mestre: [`docs/MASTER_PROMPT.md`](docs/MASTER_PROMPT.md). Decisões e adaptações:
+[`docs/DECISIONS.md`](docs/DECISIONS.md) (o Supabase foi substituído por Firebase, D-004).
 
-## Stack (definida no contrato, Parte A)
+## Stack
 
-- Frontend: React + TypeScript + Vite, hospedado no Cloudflare Pages
+- Frontend: React + TypeScript + Vite (PWA), Cloudflare Pages
 - Backend: Cloudflare Workers
-- Banco e autenticação: Supabase (PostgreSQL, Auth, RLS)
+- Banco e autenticação: Firebase (Firestore + Firebase Auth), com Security Rules
 - Arquivos: Cloudflare R2, somente quando necessário
-- Gerenciador de pacotes: pnpm
+- Pacotes: pnpm (monorepo)
 
 ## Estrutura
 
 ```
 apps/web/            Frontend PWA
-apps/admin/          Painel administrativo (Fase 5)
 workers/api/         Cloudflare Worker (API)
-packages/shared/     Tipos e validações compartilhados
-packages/providers/  Interfaces e adaptadores de provedores externos
-supabase/migrations/ Migrations versionadas e políticas RLS
-supabase/tests/      Testes de isolamento
+packages/shared/     Schemas e tipos compartilhados
+firebase/            Regras do Firestore, índices e testes de regras
 docs/                Documentação permanente
 ```
 
+`apps/admin` e `packages/providers` serão criados nas fases 4 e 5.
+
+## Comandos
+
+```
+pnpm install
+pnpm lint
+pnpm typecheck
+pnpm test          # unitários e Worker (mocks)
+pnpm build
+pnpm test:rules    # regras do Firestore no emulador (precisa de Java e internet)
+```
+
+## Fluxo de branches
+
+Trabalho em `develop`; `main` deve ser protegida no GitHub.
+
 ## Segurança
 
-Nenhuma credencial real deve ser versionada. Use apenas `.env.example` como referência de
-nomes de variáveis; valores reais ficam em secrets do ambiente.
+Nenhuma credencial real é versionada. `.env.example` lista só nomes de variáveis. O Worker não possui
+credencial de conta de serviço: ele valida o ID token do Firebase e o repassa ao Firestore, que aplica as regras.

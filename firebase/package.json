@@ -1,0 +1,18 @@
+{
+  "name": "@lifeflow/firebase-rules",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "emulators": "firebase emulators:start --only auth,firestore --project demo-lifeflow",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-lifeflow \"vitest run\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "firebase": "^11.0.0",
+    "firebase-tools": "^14.0.0",
+    "vitest": "^2.1.0"
+  }
+}
