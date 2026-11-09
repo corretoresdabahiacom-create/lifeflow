@@ -6,7 +6,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "emulators": "firebase emulators:start --only auth,firestore --project demo-lifeflow",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-lifeflow \"vitest run\""
+    "test:rules": "firebase emulators:exec --only firestore --project demo-lifeflow \"vitest run\"",
+    "test:integration": "firebase emulators:exec --only firestore --project demo-lifeflow \"pnpm --filter @lifeflow/api test:integration\""
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.0",

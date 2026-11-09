@@ -5,7 +5,6 @@ import {
   type Preferences,
   type Profile,
 } from "@lifeflow/shared";
-import type { ZodTypeAny, z } from "zod";
 import {
   defaultKeyResolver,
   extractBearerToken,
@@ -16,9 +15,9 @@ import {
 import type { Env } from "./env";
 import { HttpError } from "./errors";
 import { FirestoreClient, type DocData } from "./firestore";
+import { handleFinance } from "./finance";
+import { allow, json, parseBody } from "./http";
 import { log } from "./logger";
-
-const MAX_BODY_BYTES = 16 * 1024;
 
 export interface AppDeps {
   fetchImpl?: typeof fetch;
@@ -102,6 +101,9 @@ async function route(
   const profilePath = `users/${user.uid}`;
   const prefsPath = `users/${user.uid}/preferences/app`;
 
+  const finance = await handleFinance({ request, url, uid: user.uid, db, now });
+  if (finance) return finance;
+
   switch (url.pathname) {
     case "/v1/me": {
       allow(method, ["GET"]);
@@ -146,46 +148,14 @@ async function route(
   }
 }
 
-function allow(method: string, methods: string[]): void {
-  if (!methods.includes(method)) {
-    throw new HttpError(405, "method_not_allowed", "Método não permitido", { Allow: methods.join(", ") });
-  }
-}
-
-async function parseBody<S extends ZodTypeAny>(request: Request, schema: S): Promise<z.infer<S>> {
-  const declared = Number(request.headers.get("Content-Length") ?? "0");
-  if (declared > MAX_BODY_BYTES) throw new HttpError(413, "payload_too_large", "Corpo da requisição muito grande");
-  const text = await request.text();
-  if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) {
-    throw new HttpError(413, "payload_too_large", "Corpo da requisição muito grande");
-  }
-  let raw: unknown;
-  try {
-    raw = JSON.parse(text);
-  } catch {
-    throw new HttpError(400, "invalid_json", "JSON inválido");
-  }
-  const result = schema.safeParse(raw);
-  if (!result.success) {
-    throw new HttpError(400, "validation_error", "Dados inválidos (campos desconhecidos, como uid, são rejeitados)");
-  }
-  return result.data;
-}
-
-function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json; charset=utf-8", ...extra },
-  });
-}
-
 function applyCors(headers: Headers, request: Request, env: Env): void {
   headers.append("Vary", "Origin");
   const origin = request.headers.get("Origin");
   if (origin && origin === env.ALLOWED_ORIGIN) {
     headers.set("Access-Control-Allow-Origin", origin);
-    headers.set("Access-Control-Allow-Methods", "GET, PUT, DELETE, OPTIONS");
-    headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+    headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key");
+    headers.set("Access-Control-Expose-Headers", "Idempotent-Replay, X-Request-Id, Content-Disposition");
     headers.set("Access-Control-Max-Age", "600");
   }
 }

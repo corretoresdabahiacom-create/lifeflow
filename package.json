@@ -13,7 +13,8 @@
     "typecheck": "pnpm -r --workspace-concurrency=1 typecheck",
     "test": "pnpm -r --workspace-concurrency=1 --if-present test",
     "test:rules": "pnpm --filter @lifeflow/firebase-rules test:rules",
-    "build": "pnpm -r --workspace-concurrency=1 --if-present build"
+    "build": "pnpm -r --workspace-concurrency=1 --if-present build",
+    "test:integration": "pnpm --filter @lifeflow/firebase-rules test:integration"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
