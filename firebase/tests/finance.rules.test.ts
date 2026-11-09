@@ -228,7 +228,7 @@ describe("finanças: lançamentos (livro-razão)", () => {
       setDoc(ref(a(), "users/userA/transactions/receita"), transaction("userA", { type: "income", signedCents: 1000 })),
     );
   });
-  it("nega conta inexistente, conta de outro usuário, valor decimal/zero, sinal inconsistente e status inicial 'voided'", async () => {
+  it("nega conta inexistente, valor decimal/zero, sinal inconsistente e status inicial 'voided'", async () => {
     await assertFails(setDoc(ref(a(), "users/userA/transactions/n1"), transaction("userA", { accountId: "nao_existe" })));
     await assertFails(setDoc(ref(a(), "users/userA/transactions/n2"), transaction("userA", { amountCents: 10.5, signedCents: -10.5 })));
     await assertFails(setDoc(ref(a(), "users/userA/transactions/n3"), transaction("userA", { amountCents: 0, signedCents: 0 })));
