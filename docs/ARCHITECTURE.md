@@ -46,7 +46,7 @@ Todas as coleções pessoais ficam sob `users/{uid}`; a regra de propriedade é 
 | Firebase Auth (frontend) | Código implementado; sem projeto real configurado |
 | Validação de JWT Firebase no Worker | Código implementado e testado com mocks (chaves geradas nos testes) |
 | Firestore REST via Worker | Código implementado e testado com mocks |
-| Firestore Security Rules | Escritas; execução contra o emulador: ver `PHASE_01_FOUNDATION.md` |
+| Firestore Security Rules | Escritas; 19 testes aprovados no emulador do Firestore (CI) |
 | DeepSeek (LLM) | Não implementado |
 | Groq (transcrição) | Não implementado |
 | Mercado Pago | Não implementado |

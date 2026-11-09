@@ -12,7 +12,7 @@ prompts sem necessidade.
 | Controle | Estado |
 |---|---|
 | Validação criptográfica de JWT no Worker (assinatura, iss, aud, exp, sub) | Implementado e testado com mocks |
-| Segurança de dados por Security Rules (equivalente à RLS) | Regras escritas; execução contra emulador: ver `PHASE_01_FOUNDATION.md` |
+| Segurança de dados por Security Rules (equivalente à RLS) | Implementado; 19 testes negativos aprovados no emulador (CI, run 42659605727) |
 | `uid` vem só do token; `uid` do cliente nunca é identidade | Implementado e testado |
 | Sem conta de serviço em requisições de usuário | Implementado (Worker não possui credencial de serviço) |
 | Sem refresh token no Worker | Implementado |

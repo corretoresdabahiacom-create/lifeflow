@@ -20,7 +20,8 @@
 ## Estado (Fase 1)
 
 Resultados reais e pendências em `PHASE_01_FOUNDATION.md`. Resumo: lint, typecheck, test (57) e build
-passaram; `test:rules` **não foi executado** no ambiente de desenvolvimento por bloqueio de rede.
+passaram localmente. `test:rules` **não pôde rodar no ambiente de desenvolvimento** (bloqueio de rede) e
+foi executado na CI do GitHub: 19 testes aprovados (run 42659605727). O checklist manual não foi executado.
 
 ## Tipos de teste
 
