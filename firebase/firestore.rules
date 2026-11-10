@@ -44,6 +44,12 @@ service cloud.firestore {
     function isPositiveCents(v) {
       return v is int && v > 0 && v <= 100000000000;
     }
+    function isNullOrTime(v) {
+      return v == null || (v is string && v.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$'));
+    }
+    function isNullOrLink(v) {
+      return v == null || (v is string && v.size() <= 500 && v.matches('^https?://[^ ]+$'));
+    }
     function changedKeys() {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
@@ -308,6 +314,199 @@ service cloud.firestore {
           && request.resource.data.lastMaterializedThrough == null;
         allow update: if isOwner(uid) && validRecurring()
           && !changedKeys().hasAny(['uid', 'kind', 'frequency', 'startDate', 'createdAt', 'requestHash']);
+        allow delete: if false;
+      }
+
+      // =================== Agenda (Fase 3) ===================
+
+      // ---- Eventos (série ou evento simples): users/{uid}/events/{docId} ----
+      match /events/{docId} {
+        function validEvent() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['uid', 'title', 'kind', 'description', 'startDate', 'startTime', 'durationMin', 'timeZone', 'location', 'contact', 'link', 'notes', 'estimatedCostCents', 'reminders', 'recFrequency', 'recInterval', 'recWeekdays', 'recUntil', 'recCount', 'expenseTransactionId', 'createdAt', 'updatedAt', 'requestHash'])
+            && d.keys().hasAll(['uid', 'title', 'kind', 'description', 'startDate', 'startTime', 'durationMin', 'timeZone', 'location', 'contact', 'link', 'notes', 'estimatedCostCents', 'reminders', 'recFrequency', 'recInterval', 'recWeekdays', 'recUntil', 'recCount', 'expenseTransactionId', 'createdAt', 'updatedAt', 'requestHash'])
+            && isDocId(docId)
+            && d.uid == uid
+            && isText(d.title, 120)
+            && d.kind in ['personal', 'professional', 'medical', 'family', 'meeting', 'trip', 'other']
+            && isNullOrText(d.description, 1000)
+            && isDateText(d.startDate)
+            && isNullOrTime(d.startTime)
+            && d.durationMin is int && d.durationMin >= 1 && d.durationMin <= 20160
+            && isText(d.timeZone, 64)
+            && isNullOrText(d.location, 200)
+            && isNullOrText(d.contact, 200)
+            && isNullOrLink(d.link)
+            && isNullOrText(d.notes, 1000)
+            && (d.estimatedCostCents == null || isPositiveCents(d.estimatedCostCents))
+            && d.reminders is string && d.reminders.matches('^([0-9]{1,5}(,[0-9]{1,5}){0,4})?$')
+            && (d.recFrequency == null || d.recFrequency in ['daily', 'weekly', 'monthly', 'yearly', 'custom'])
+            && (d.recInterval == null || (d.recInterval is int && d.recInterval >= 1 && d.recInterval <= 99))
+            && d.recWeekdays is string && d.recWeekdays.matches('^([0-6](,[0-6]){0,6})?$')
+            && isNullOrDate(d.recUntil)
+            && (d.recCount == null || (d.recCount is int && d.recCount >= 1 && d.recCount <= 1000))
+            && isNullOrDocId(d.expenseTransactionId)
+            && d.createdAt is string
+            && d.updatedAt is string
+            && d.requestHash is string && d.requestHash.size() <= 100;
+        }
+
+        allow get: if isOwner(uid);
+        allow list: if isOwner(uid);
+        allow create: if isOwner(uid) && validEvent() && request.resource.data.expenseTransactionId == null;
+        allow update: if isOwner(uid) && validEvent()
+          && !changedKeys().hasAny(['uid', 'createdAt', 'requestHash']);
+        allow delete: if isOwner(uid);
+      }
+
+      // ---- Exceções de ocorrência: users/{uid}/eventExceptions/{docId} ----
+      // Campos de sobrescrita são opcionais: ausente = herda da série; presente (inclusive null) = sobrescreve.
+      match /eventExceptions/{docId} {
+        function validException() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['uid', 'seriesId', 'originalDate', 'canceled', 'createdAt', 'updatedAt', 'startDate', 'startTime', 'durationMin', 'title', 'kind', 'description', 'location', 'contact', 'link', 'notes', 'estimatedCostCents', 'reminders', 'expenseTransactionId'])
+            && d.keys().hasAll(['uid', 'seriesId', 'originalDate', 'canceled', 'createdAt', 'updatedAt'])
+            && isDocId(docId)
+            && d.uid == uid
+            && isDocId(d.seriesId)
+            && isDateText(d.originalDate)
+            && d.canceled is bool
+            && d.createdAt is string
+            && d.updatedAt is string
+            && (!('startDate' in d) || isDateText(d.startDate))
+            && (!('startTime' in d) || isNullOrTime(d.startTime))
+            && (!('durationMin' in d) || (d.durationMin is int && d.durationMin >= 1 && d.durationMin <= 20160))
+            && (!('title' in d) || isText(d.title, 120))
+            && (!('kind' in d) || d.kind in ['personal', 'professional', 'medical', 'family', 'meeting', 'trip', 'other'])
+            && (!('description' in d) || isNullOrText(d.description, 1000))
+            && (!('location' in d) || isNullOrText(d.location, 200))
+            && (!('contact' in d) || isNullOrText(d.contact, 200))
+            && (!('link' in d) || isNullOrLink(d.link))
+            && (!('notes' in d) || isNullOrText(d.notes, 1000))
+            && (!('estimatedCostCents' in d) || d.estimatedCostCents == null || isPositiveCents(d.estimatedCostCents))
+            && (!('reminders' in d) || (d.reminders is string && d.reminders.matches('^([0-9]{1,5}(,[0-9]{1,5}){0,4})?$')))
+            && (!('expenseTransactionId' in d) || isNullOrDocId(d.expenseTransactionId));
+        }
+
+        allow get: if isOwner(uid);
+        allow list: if isOwner(uid);
+        allow create: if isOwner(uid) && validException();
+        allow update: if isOwner(uid) && validException()
+          && !changedKeys().hasAny(['uid', 'seriesId', 'originalDate', 'createdAt']);
+        allow delete: if isOwner(uid);
+      }
+
+      // ---- Tarefas: users/{uid}/tasks/{docId} ----
+      match /tasks/{docId} {
+        function validTask() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['uid', 'title', 'description', 'priority', 'categoryId', 'dueDate', 'dueTime', 'status', 'reminderMinutes', 'completedAt', 'createdAt', 'updatedAt', 'requestHash'])
+            && d.keys().hasAll(['uid', 'title', 'description', 'priority', 'categoryId', 'dueDate', 'dueTime', 'status', 'reminderMinutes', 'completedAt', 'createdAt', 'updatedAt', 'requestHash'])
+            && isDocId(docId)
+            && d.uid == uid
+            && isText(d.title, 140)
+            && isNullOrText(d.description, 1000)
+            && d.priority in ['low', 'medium', 'high', 'urgent']
+            && isNullOrDocId(d.categoryId)
+            && isNullOrDate(d.dueDate)
+            && isNullOrTime(d.dueTime)
+            && (d.dueTime == null || d.dueDate != null)
+            && d.status in ['pending', 'in_progress', 'completed', 'canceled']
+            && (d.reminderMinutes == null || (d.reminderMinutes is int && d.reminderMinutes >= 0 && d.reminderMinutes <= 40320))
+            && (d.reminderMinutes == null || d.dueDate != null)
+            && (d.completedAt == null || d.completedAt is string)
+            && (d.status == 'completed' || d.completedAt == null)
+            && d.createdAt is string
+            && d.updatedAt is string
+            && d.requestHash is string && d.requestHash.size() <= 100;
+        }
+
+        allow get: if isOwner(uid);
+        allow list: if isOwner(uid);
+        allow create: if isOwner(uid) && validTask() && request.resource.data.completedAt == null
+          && request.resource.data.status in ['pending', 'in_progress'];
+        allow update: if isOwner(uid) && validTask()
+          && !changedKeys().hasAny(['uid', 'createdAt', 'requestHash']);
+        allow delete: if isOwner(uid);
+      }
+
+      // ---- Categorias de tarefa: users/{uid}/taskCategories/{docId} ----
+      match /taskCategories/{docId} {
+        function validTaskCategory() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['uid', 'name', 'archived', 'createdAt', 'updatedAt', 'requestHash'])
+            && d.keys().hasAll(['uid', 'name', 'archived', 'createdAt', 'updatedAt', 'requestHash'])
+            && isDocId(docId)
+            && d.uid == uid
+            && isText(d.name, 60)
+            && d.archived is bool
+            && d.createdAt is string
+            && d.updatedAt is string
+            && d.requestHash is string;
+        }
+
+        allow get: if isOwner(uid);
+        allow list: if isOwner(uid);
+        allow create: if isOwner(uid) && validTaskCategory() && request.resource.data.archived == false;
+        allow update: if isOwner(uid) && validTaskCategory()
+          && !changedKeys().hasAny(['uid', 'createdAt', 'requestHash']);
+        allow delete: if false;
+      }
+
+      // ---- Lembretes avulsos: users/{uid}/reminders/{docId} (imutáveis; só criar e excluir) ----
+      match /reminders/{docId} {
+        function validReminder() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['uid', 'title', 'remindAt', 'createdAt', 'requestHash'])
+            && d.keys().hasAll(['uid', 'title', 'remindAt', 'createdAt', 'requestHash'])
+            && isDocId(docId)
+            && d.uid == uid
+            && isText(d.title, 140)
+            && d.remindAt is string && d.remindAt.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z$')
+            && d.createdAt is string
+            && d.requestHash is string;
+        }
+
+        allow get: if isOwner(uid);
+        allow list: if isOwner(uid);
+        allow create: if isOwner(uid) && validReminder();
+        allow update: if false;
+        allow delete: if isOwner(uid);
+      }
+
+      // ---- Notificações: users/{uid}/notifications/{docId} ----
+      // Só o estado de leitura/dispensa muda; "dispensar" esconde, não apaga (evita regerar o aviso).
+      match /notifications/{docId} {
+        function validNotification() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['uid', 'type', 'title', 'body', 'sourceType', 'sourceId', 'occurrenceKey', 'triggerAt', 'silent', 'read', 'readAt', 'dismissed', 'createdAt'])
+            && d.keys().hasAll(['uid', 'type', 'title', 'body', 'sourceType', 'sourceId', 'occurrenceKey', 'triggerAt', 'silent', 'read', 'readAt', 'dismissed', 'createdAt'])
+            && isDocId(docId)
+            && d.uid == uid
+            && d.type in ['event_reminder', 'task_reminder', 'task_overdue', 'payable_due', 'reminder']
+            && isText(d.title, 200)
+            && d.body is string && d.body.size() <= 300
+            && d.sourceType in ['event', 'task', 'payable', 'reminder']
+            && isDocId(d.sourceId)
+            && isText(d.occurrenceKey, 120)
+            && d.triggerAt is string
+            && d.silent is bool
+            && d.read is bool
+            && (d.readAt == null || d.readAt is string)
+            && d.dismissed is bool
+            && d.createdAt is string;
+        }
+
+        allow get: if isOwner(uid);
+        allow list: if isOwner(uid);
+        allow create: if isOwner(uid) && validNotification()
+          && request.resource.data.read == false
+          && request.resource.data.readAt == null
+          && request.resource.data.dismissed == false;
+        allow update: if isOwner(uid) && validNotification()
+          && changedKeys().hasOnly(['read', 'readAt', 'dismissed'])
+          && (resource.data.read == false || request.resource.data.read == true)
+          && (resource.data.dismissed == false || request.resource.data.dismissed == true);
         allow delete: if false;
       }
     }

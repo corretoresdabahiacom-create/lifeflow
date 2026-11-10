@@ -15,6 +15,7 @@ import {
 import type { Env } from "./env";
 import { HttpError } from "./errors";
 import { FirestoreClient, type DocData } from "./firestore";
+import { handleAgenda } from "./agenda";
 import { handleFinance } from "./finance";
 import { allow, json, parseBody } from "./http";
 import { log } from "./logger";
@@ -103,6 +104,8 @@ async function route(
 
   const finance = await handleFinance({ request, url, uid: user.uid, db, now });
   if (finance) return finance;
+  const agenda = await handleAgenda({ request, url, uid: user.uid, db, now });
+  if (agenda) return agenda;
 
   switch (url.pathname) {
     case "/v1/me": {

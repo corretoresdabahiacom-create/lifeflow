@@ -1,4 +1,4 @@
-import { DOC_ID_RE, todayInTimeZone } from "@lifeflow/shared";
+import { DOC_ID_RE, isValidTimeZone, todayInTimeZone } from "@lifeflow/shared";
 import { HttpError } from "../errors";
 import {
   PreconditionFailedError,
@@ -32,6 +32,13 @@ export function pathsFor(uid: string) {
     transfer: (id: string) => `${parent}/transfers/${id}`,
     payable: (id: string) => `${parent}/payables/${id}`,
     recurring: (id: string) => `${parent}/recurring/${id}`,
+    event: (id: string) => `${parent}/events/${id}`,
+    eventException: (id: string) => `${parent}/eventExceptions/${id}`,
+    task: (id: string) => `${parent}/tasks/${id}`,
+    taskCategory: (id: string) => `${parent}/taskCategories/${id}`,
+    reminder: (id: string) => `${parent}/reminders/${id}`,
+    notification: (id: string) => `${parent}/notifications/${id}`,
+    preferences: `${parent}/preferences/app`,
   };
 }
 
@@ -236,6 +243,13 @@ export async function todayFor(ctx: Ctx): Promise<string> {
   const profile = await ctx.db.get(pathsFor(ctx.uid).profile);
   const timezone = typeof profile?.["timezone"] === "string" ? profile["timezone"] : DEFAULT_TIMEZONE;
   return todayInTimeZone(ctx.now(), timezone);
+}
+
+/** Fuso do perfil (padrão America/Sao_Paulo); fuso inválido cai no padrão. */
+export async function profileTimeZone(ctx: Ctx): Promise<string> {
+  const profile = await ctx.db.get(pathsFor(ctx.uid).profile);
+  const tz = typeof profile?.["timezone"] === "string" ? profile["timezone"] : DEFAULT_TIMEZONE;
+  return isValidTimeZone(tz) ? tz : DEFAULT_TIMEZONE;
 }
 
 export async function loadAccount(

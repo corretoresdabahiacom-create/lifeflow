@@ -108,7 +108,8 @@ export function fakeFirestore(initial: Record<string, DocData> = {}) {
 
   const commit = (body: string): Response => {
     type Write = {
-      update: { name: string; fields?: RestFields };
+      update?: { name: string; fields?: RestFields };
+      delete?: string;
       updateMask?: { fieldPaths: string[] };
       updateTransforms?: Array<{ fieldPath: string; increment: { integerValue: string } }>;
       currentDocument?: { exists?: boolean; updateTime?: string };
@@ -116,7 +117,7 @@ export function fakeFirestore(initial: Record<string, DocData> = {}) {
     const { writes } = JSON.parse(body) as { writes: Write[] };
     // 1) Todas as pré-condições antes de gravar qualquer coisa (atomicidade).
     for (const write of writes) {
-      const path = nameToPath(write.update.name);
+      const path = nameToPath((write.update?.name ?? write.delete) as string);
       const current = docs.get(path);
       const condition = write.currentDocument;
       if (!condition) continue;
@@ -128,8 +129,15 @@ export function fakeFirestore(initial: Record<string, DocData> = {}) {
     }
     // 2) Aplica tudo.
     for (const write of writes) {
-      const path = nameToPath(write.update.name);
-      const fields = decodeFields(write.update.fields);
+      if (write.delete !== undefined) {
+        const gone = nameToPath(write.delete);
+        docs.delete(gone);
+        times.delete(gone);
+        continue;
+      }
+      const update = write.update as NonNullable<Write["update"]>;
+      const path = nameToPath(update.name);
+      const fields = decodeFields(update.fields);
       const mask = write.updateMask?.fieldPaths;
       const next: DocData = mask ? { ...(docs.get(path) ?? {}) } : {};
       if (mask) for (const field of mask) next[field] = fields[field] ?? null;
@@ -275,11 +283,16 @@ export function fakeFirestore(initial: Record<string, DocData> = {}) {
   };
 }
 
-export function makeApp(signer: Signer, fetchImpl: typeof fetch, envOverride: Partial<Env> = {}) {
+/** Relógio ajustável dos testes: `clock.now` pode ser alterado entre as requisições. */
+export interface Clock {
+  now: Date;
+}
+
+export function makeApp(signer: Signer, fetchImpl: typeof fetch, envOverride: Partial<Env> = {}, clock?: Clock) {
   const handle = createHandler({
     fetchImpl,
     keyResolver: () => createLocalJWKSet({ keys: [signer.jwk] }),
-    now: () => new Date("2026-11-09T12:00:00.000Z"),
+    now: () => clock?.now ?? new Date("2026-11-09T12:00:00.000Z"),
   });
   return (path: string, init: RequestInit = {}, token?: string): Promise<Response> => {
     const headers = new Headers(init.headers);

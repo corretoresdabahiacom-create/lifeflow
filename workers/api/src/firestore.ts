@@ -16,6 +16,8 @@ export interface WriteOp {
   increments?: Record<string, number>;
   /** `exists:false` = só cria; `exists:true` = só altera; `updateTime` = só se não mudou desde a leitura. */
   precondition?: { exists: boolean } | { updateTime: string };
+  /** Exclui o documento (os demais campos são ignorados). */
+  delete?: boolean;
 }
 
 /** Uma pré-condição do commit falhou: nada foi gravado. */
@@ -158,6 +160,11 @@ export class FirestoreClient {
    */
   async commit(ops: WriteOp[]): Promise<void> {
     const writes = ops.map((op) => {
+      if (op.delete) {
+        const del: Record<string, unknown> = { delete: this.resourceName(op.path) };
+        if (op.precondition) del["currentDocument"] = op.precondition;
+        return del;
+      }
       const write: Record<string, unknown> = {
         update: { name: this.resourceName(op.path), fields: encodeFields(op.fields ?? {}) },
       };
