@@ -52,8 +52,8 @@ Node 22, pnpm 9.15.0. Códigos de saída capturados nesta sessão.
 | `pnpm build` | 0 | web: JS 483,8 kB (126,1 kB gzip); Worker: `wrangler deploy --dry-run` ok, 306,8 KiB (60,3 KiB gzip) |
 
 **No emulador real do Firestore (somente na CI):** execução `42783050907` (commit `14501a9`, `develop`), jobs verdes.
-Essa execução cobre o backend e as regras; o commit final desta fase (frontend e documentação) tem execução própria,
-registrada no `CHANGELOG.md`/relatório final.
+Execução final do commit `ff1750f` (frontend e documentação): `42784437201`, jobs verdes. A anterior cobre o backend e as regras;
+ambas passaram.
 
 | Suíte | Resultado |
 |---|---|
