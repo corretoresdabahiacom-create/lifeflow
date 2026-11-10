@@ -47,6 +47,25 @@ letras, números, `_ - : .`). O cliente deve reenviar a MESMA chave ao repetir a
 | `GET /v1/reconcile` | Confere saldo guardado × lançamentos efetivados (somente leitura) |
 | `GET /v1/finance/overview` | Painel: saldo total, resultado do mês, contas a vencer |
 
+### Agenda (Fase 3)
+
+| Rota | Descrição |
+|---|---|
+| `GET /v1/events?from&to` | Ocorrências do período (recorrências expandidas, exceções aplicadas, `conflictsWith`) |
+| `POST /v1/events` | Cria evento (`Idempotency-Key` obrigatória); responde com `conflicts` |
+| `POST /v1/events/check-conflicts` | Avisa conflitos antes de salvar (`excludeEventId` ao editar) |
+| `GET\|PATCH\|DELETE /v1/events/{id}` | `PATCH {scope: one\|following\|all, occurrenceDate?, changes}`; `DELETE ?scope&occurrenceDate` |
+| `POST /v1/events/{id}/expense` | Registra a despesa real do custo previsto (`accountId`, `occurrenceDate?`). Repetida → `409 expense_already_linked` |
+| `GET\|POST /v1/tasks` · `GET\|PATCH\|DELETE /v1/tasks/{id}` | Filtros: `status`, `priority`, `categoryId`, `overdue`, `from`, `to`, `includeDone`, `limit` |
+| `POST /v1/tasks/{id}/complete` | Conclusão idempotente |
+| `GET\|POST /v1/task-categories` · `PATCH /v1/task-categories/{id}` | Categorias de tarefa (arquivar em vez de excluir) |
+| `GET\|POST /v1/reminders` · `DELETE /v1/reminders/{id}` | Lembretes avulsos (`remindAt` em UTC, termina em `Z`) |
+| `POST /v1/notifications/generate` | Gera notificações devidas; idempotente |
+| `GET /v1/notifications` · `POST /v1/notifications/{id}/read` · `/dismiss` · `POST /v1/notifications/read-all` | Central de notificações |
+
+Códigos adicionais da agenda: `422` `invalid_time_zone`, `invalid_occurrence`, `idempotency_key_reuse`;
+`409` `expense_already_linked`.
+
 Códigos adicionais: `404` (conta/categoria/registro inexistente ou de outro usuário — nunca `403` por
 existência), `409` (`conflict`, `possible_duplicate`, `already_paid`, `not_open`, `part_of_transfer`,
 `voided_immutable`), `422` (`account_archived`, `invalid_category`, `idempotency_key_reuse`, `through_too_far`).

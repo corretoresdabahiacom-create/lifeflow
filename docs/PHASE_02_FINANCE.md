@@ -1,6 +1,6 @@
 # FASE 2 — FINANCEIRO
 
-**Status:** implementada; **aguardando aprovação do responsável**. A Fase 3 não foi iniciada.
+**Status:** implementada e **aprovada pelo responsável**. (A Fase 3 foi iniciada depois.)
 Comandos obrigatórios e testes automatizados aprovados (inclusive no emulador real do Firestore, na CI).
 **O checklist manual no navegador com Firebase real não foi executado** (ver "Checklist"). Decisões: `DECISIONS.md` D-006.
 

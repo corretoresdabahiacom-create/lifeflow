@@ -28,6 +28,13 @@ Valores em centavos inteiros. Todos os campos existem sempre (nulos quando vazio
 IDs: `^[A-Za-z0-9_-]{1,80}$` (validado na API, nas regras e nas rotas, o que impede manipulação de caminho).
 IDs de criação são determinísticos (idempotência); ver `DECISIONS.md` D-006.
 
+### Agenda (Fase 3)
+
+Sob `users/{uid}/`: `events` (série ou evento simples), `eventExceptions` (alterações/cancelamentos de uma
+ocorrência), `tasks`, `taskCategories`, `reminders` (avulsos), `notifications`, `preferences/app` (horário silencioso).
+Documentos planos; datas locais + fuso IANA. Eventos e tarefas podem ser excluídos; categorias de tarefa não
+(arquivam); notificações só mudam `read`, `readAt`, `dismissed` e apenas para frente. Detalhes em `DECISIONS.md` D-007.
+
 ### Índices
 
 `firebase/firestore.indexes.json` continua **vazio de propósito**: todas as consultas usam apenas índices

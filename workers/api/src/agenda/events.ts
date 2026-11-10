@@ -347,7 +347,14 @@ function requireOccurrence(event: CalendarEvent, occurrenceDate: string | undefi
   return occurrenceDate;
 }
 
-const SCHEDULE_FIELDS = ["startDate", "recurrence"] as const;
+/** O calendário só mudou se a data inicial ou a regra de recorrência realmente tiverem valor diferente. */
+function scheduleChanged(event: CalendarEvent, changes: EventChanges): boolean {
+  if (changes.startDate !== undefined && changes.startDate !== event.startDate) return true;
+  return (
+    changes.recurrence !== undefined &&
+    JSON.stringify(recurrenceToFields(changes.recurrence)) !== JSON.stringify(recurrenceToFields(event.recurrence))
+  );
+}
 
 async function patchEvent(ctx: Ctx, id: string): Promise<Response> {
   const input = await parseBody(ctx.request, EventPatchSchema);
@@ -370,8 +377,7 @@ async function patchEvent(ctx: Ctx, id: string): Promise<Response> {
   const next = applyChanges(event, input.changes, timestamp);
   validateMerged(next);
   const ops: WriteOp[] = [];
-  const scheduleChanged = SCHEDULE_FIELDS.some((field) => input.changes[field] !== undefined);
-  if (scheduleChanged && (event.recurrence !== null || next.recurrence !== null)) {
+  if (scheduleChanged(event, input.changes) && (event.recurrence !== null || next.recurrence !== null)) {
     // Mudou a regra de datas: as exceções (presas às datas antigas) deixam de fazer sentido.
     for (const exception of await seriesExceptions(ctx, id)) ops.push({ path: p.eventException(exception.id), delete: true });
   }
@@ -462,7 +468,7 @@ async function splitSeries(
   );
   validateMerged(created);
 
-  const scheduleChanged = SCHEDULE_FIELDS.some((field) => changes[field] !== undefined);
+  const moved = scheduleChanged({ ...event, startDate: date }, changes);
   const ops: WriteOp[] = [
     {
       path: p.event(event.id),
@@ -476,7 +482,7 @@ async function splitSeries(
   for (const exception of await seriesExceptions(ctx, event.id)) {
     if (String(exception.data["originalDate"]) < date) continue;
     ops.push({ path: p.eventException(exception.id), delete: true });
-    if (!scheduleChanged) {
+    if (!moved) {
       const newXId = await exceptionId(newId, String(exception.data["originalDate"]));
       ops.push({
         path: p.eventException(newXId),

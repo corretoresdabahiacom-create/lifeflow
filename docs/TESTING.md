@@ -18,6 +18,15 @@
 | `pnpm test:rules` | Security Rules no emulador do Firestore (exige Java 17+ e acesso a `storage.googleapis.com`) |
 | `pnpm test:integration` | Mesma suíte financeira do Worker contra o emulador real, com as regras reais (mesmos requisitos) |
 
+## Estado (Fase 3)
+
+Resultados e mapa dos testes obrigatórios em `PHASE_03_AGENDA.md`. Resumo: lint, typecheck, test (274: shared 93,
+web 57, api 124) e build passaram localmente; `test:rules` (113) e `test:integration` (75) rodaram **somente na CI**
+(execução `42783050907` para o backend e as regras). A suíte da agenda (`agenda.suite.ts`, 47 testes) roda no
+Firestore falso (47) e no emulador real (44; 3 testes `[falso]` verificam commit único, falha parcial e número de
+chamadas). O relógio é injetável (`makeApp(..., clock)`; padrão 2026-11-09T12:00Z). Roteiro manual no navegador com
+Firebase real: não executado.
+
 ## Estado (Fase 2)
 
 Resultados e mapa dos testes obrigatórios em `PHASE_02_FINANCE.md`. Resumo: lint, typecheck, test (170: shared 62,

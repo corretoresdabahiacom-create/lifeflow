@@ -52,8 +52,10 @@ Todas as coleções pessoais ficam sob `users/{uid}`; a regra de propriedade é 
 | Firebase Auth (frontend) | Código implementado; sem projeto real configurado |
 | Validação de JWT Firebase no Worker | Código implementado e testado com mocks (chaves geradas nos testes) |
 | Firestore REST via Worker | Código implementado e testado com mocks |
-| Firestore Security Rules | Escritas; 70 testes de regras aprovados no emulador do Firestore (CI): 19 da Fase 1 + 51 financeiros |
+| Firestore Security Rules | Escritas; 113 testes de regras aprovados no emulador do Firestore (CI): 19 da Fase 1 + 51 financeiros + 43 da agenda |
 | Módulo financeiro (Worker + Firestore) | Implementado; 31 testes de API aprovados contra o emulador real com as regras reais (CI) |
+| Módulo de agenda (Worker + Firestore) | Implementado; 44 testes de API no emulador real com as regras reais (CI); 43 de regras |
+| Notificações da agenda | Geradas sob demanda pelo app aberto; sem agendador |
 | DeepSeek (LLM) | Não implementado |
 | Groq (transcrição) | Não implementado |
 | Mercado Pago | Não implementado |

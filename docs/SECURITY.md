@@ -38,6 +38,16 @@ prompts sem necessidade.
 - Operações privilegiadas, quando necessárias, serão restritas e auditadas. Não existe
   caminho genérico de bypass das regras.
 
+## Agenda (Fase 3)
+
+- Regras para `events`, `eventExceptions`, `tasks`, `taskCategories`, `reminders`, `notifications` com validação de
+  formato (tipo, horário, duração, fuso, link, lembretes, recorrência, custo), `uid` imutável, ids validados.
+  Exclusão permitida só em eventos, exceções, tarefas e lembretes; notificações não são excluídas.
+- Avisos de vencimento financeiro não contêm valores. Descrição de evento não é enviada em edições.
+- 43 testes de regras e 44 de API no emulador real (CI) cobrem isolamento A×B, formato e imutabilidade.
+- Limite conhecido: o cliente, com o próprio token, pode gravar nos próprios dados fora do Worker; as regras
+  garantem formato e dono, não a consistência entre documentos (ex.: vínculo evento↔despesa).
+
 ## Testes de isolamento exigidos
 
 Usuário A não lê/altera/exclui dados de B; sem token ou JWT inválido não há acesso;

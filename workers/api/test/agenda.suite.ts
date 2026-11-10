@@ -395,6 +395,10 @@ export function defineAgendaSuite(
         ["Treino funcional", 45, "Praia"], // a exceção mantém só o que sobrescreveu
         ["Treino funcional", 45, null],
       ]);
+      // Reenviar a MESMA data inicial não é mudar o calendário: a exceção continua.
+      await A.patch(`/v1/events/${series.id}`, { scope: "all", changes: { startDate: "2026-11-10", title: "Treino funcional" } });
+      list = await occurrences(A, "2026-11-10", "2026-11-24");
+      expect(list.occurrences.map((o) => o.location)).toEqual([null, "Praia", null]);
       // Mudar o calendário (data inicial) descarta as exceções presas às datas antigas.
       await A.patch(`/v1/events/${series.id}`, { scope: "all", changes: { startDate: "2026-11-11" } });
       list = await occurrences(A, "2026-11-10", "2026-11-24");

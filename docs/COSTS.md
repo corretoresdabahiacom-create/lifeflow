@@ -48,3 +48,11 @@ quando cada integração for implementada. Não foram consultados na Fase 1 e po
 
 Métricas por usuário e por plano, limites de consumo, alertas e proteção contra abuso (Fases 4 a 6).
 Para o Firestore: evitar listagens sem limite e consultas de varredura; paginação obrigatória.
+
+## Agenda (Fase 3)
+
+`POST /v1/notifications/generate` lê eventos, exceções, tarefas, contas a pagar e lembretes do usuário.
+O frontend chama ao abrir a agenda e **a cada 5 minutos por aba aberta**: custo de leituras do Firestore e de
+requisições do Worker proporcional a usuários com a agenda aberta. Mitigação já presente: janela limitada,
+leituras com limite e idempotência (sem gravações repetidas). Não medido em ambiente real; preços do Firestore e do
+Worker não consultados nesta fase. Web Push/agendador (futuro) trocaria essas leituras por execuções agendadas.

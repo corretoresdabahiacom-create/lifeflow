@@ -1,5 +1,16 @@
 import type {
   Account,
+  AppNotification,
+  CalendarEvent,
+  EventChanges,
+  EventCreateInput,
+  EventExpenseInput,
+  EventScope,
+  Occurrence,
+  ReminderCreateInput,
+  Task,
+  TaskCreateInput,
+  TaskPatchInput,
   AccountCreateInput,
   AccountPatchInput,
   Category,
@@ -102,6 +113,46 @@ export interface MaterializeResult {
   created: number;
   through: string;
   hasMore: boolean;
+}
+
+export interface ConflictItem {
+  startDate: string;
+  startUtc: string;
+  endUtc: string;
+  with: Array<{ key: string; eventId: string; title: string; startUtc: string; endUtc: string }>;
+}
+
+export interface OccurrencesReply {
+  from: string;
+  to: string;
+  occurrences: Occurrence[];
+  conflictCount: number;
+}
+
+export type EventInput = Partial<EventCreateInput> & Pick<EventCreateInput, "title" | "startDate">;
+
+export interface TaskListReply {
+  tasks: Task[];
+  total: number;
+  overdueCount: number;
+  truncated: boolean;
+}
+
+export interface TaskCategory {
+  id: string;
+  name: string;
+  archived: boolean;
+}
+
+export interface NotificationsReply {
+  notifications: AppNotification[];
+  unreadCount: number;
+}
+
+export interface StandaloneReminder {
+  id: string;
+  title: string;
+  remindAt: string;
 }
 
 type Query = Record<string, string | number | null | undefined>;
@@ -218,6 +269,44 @@ export function createApiClient(options: ApiClientOptions) {
       if (!response.ok) throw new ApiError(response.status, "export_failed", "Não foi possível exportar");
       return response.blob();
     },
+
+    // ---- Agenda (Fase 3) ----
+    listEvents: (from: string, to: string, kind?: string) =>
+      request<OccurrencesReply>(withQuery("/v1/events", { from, to, kind: kind ?? null })),
+    getEvent: (id: string) => request<CalendarEvent>(`/v1/events/${id}`),
+    createEvent: (input: EventInput, key: string) =>
+      request<CalendarEvent & { conflicts: ConflictItem[] }>("/v1/events", post(input, key)),
+    patchEvent: (id: string, input: { scope: EventScope; occurrenceDate?: string; changes: EventChanges }) =>
+      request<{ conflicts: ConflictItem[] }>(`/v1/events/${id}`, patch(input)),
+    deleteEvent: (id: string, scope: EventScope, occurrenceDate?: string) =>
+      request<{ deleted: boolean }>(withQuery(`/v1/events/${id}`, { scope, occurrenceDate: occurrenceDate ?? null }), { method: "DELETE" }),
+    checkConflicts: (input: {
+      startDate: string;
+      startTime: string;
+      durationMin: number;
+      timeZone?: string;
+      excludeEventId?: string;
+      recurrence?: EventCreateInput["recurrence"];
+    }) => request<{ hasConflicts: boolean; conflicts: ConflictItem[] }>("/v1/events/check-conflicts", post(input)),
+    createEventExpense: (id: string, input: Partial<EventExpenseInput> & Pick<EventExpenseInput, "accountId">, key: string) =>
+      request<Transaction>(`/v1/events/${id}/expense`, post(input, key)),
+
+    listTasks: (query: Query) => request<TaskListReply>(withQuery("/v1/tasks", query)),
+    createTask: (input: Partial<TaskCreateInput> & Pick<TaskCreateInput, "title">, key: string) =>
+      request<Task>("/v1/tasks", post(input, key)),
+    patchTask: (id: string, input: TaskPatchInput) => request<Task>(`/v1/tasks/${id}`, patch(input)),
+    completeTask: (id: string) => request<Task>(`/v1/tasks/${id}/complete`, post({})),
+    deleteTask: (id: string) => request<{ deleted: boolean }>(`/v1/tasks/${id}`, { method: "DELETE" }),
+    listTaskCategories: () => request<{ categories: TaskCategory[] }>("/v1/task-categories"),
+    createTaskCategory: (name: string, key: string) => request<TaskCategory>("/v1/task-categories", post({ name }, key)),
+
+    listNotifications: (unreadOnly = false) =>
+      request<NotificationsReply>(withQuery("/v1/notifications", { unread: unreadOnly ? "true" : null })),
+    generateNotifications: () => request<{ created: number; hasMore: boolean }>("/v1/notifications/generate", post({})),
+    markNotificationRead: (id: string) => request<AppNotification>(`/v1/notifications/${id}/read`, post({})),
+    dismissNotification: (id: string) => request<AppNotification>(`/v1/notifications/${id}/dismiss`, post({})),
+    readAllNotifications: () => request<{ updated: number; hasMore: boolean }>("/v1/notifications/read-all", post({})),
+    createReminder: (input: ReminderCreateInput, key: string) => request<StandaloneReminder>("/v1/reminders", post(input, key)),
   };
 }
 

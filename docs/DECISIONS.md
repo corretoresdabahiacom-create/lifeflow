@@ -117,6 +117,30 @@ Problema, Alternativas, Justificativa, Impacto, Aprovação.
 - **Alternativa não adotada:** transações do Firestore (leitura-modificação-escrita) com `beginTransaction`;
   descartada porque incrementos atômicos dispensam a leitura e reduzem contenção e custo.
 
+## D-007 — Modelo da agenda no Firestore (Fase 3)
+
+- **Documentos planos.** Só escalares (`string|boolean|number|null`): lembretes em CSV de minutos
+  (`reminders`) e recorrência achatada (`recFrequency`, `recInterval`, `recWeekdays`, `recUntil`, `recCount`).
+  As regras validam cada campo.
+- **Horário local + fuso.** `startDate` (`AAAA-MM-DD`), `startTime` (`HH:MM` ou `null` = dia inteiro) e `timeZone`
+  (IANA). O instante UTC é derivado; assim a série acompanha o horário de verão.
+- **Recorrência calculada, não materializada.** Cada data é derivada da data inicial. Frequências: diária,
+  semanal, mensal, anual e personalizada (a cada N semanas nos dias escolhidos).
+- **Exceções.** Alterar ou cancelar uma ocorrência grava `eventExceptions/{x+hash(série|data original)}`.
+  Escopos: `one` (exceção), `following` (divide a série em um único commit atômico), `all` (altera a série e
+  apaga as exceções quando o calendário muda).
+- **Conflito só avisa.** Nunca bloqueia (compromissos paralelos são legítimos). Dia inteiro fica fora.
+- **Notificações geradas sob demanda** (`POST /v1/notifications/generate`), sem agendador: não há conta de
+  serviço (D-004). Ids determinísticos + `exists:false` = idempotência. Janela: ignora só eventos que já
+  terminaram. **Web Push não implementado.**
+- **Horário silencioso:** não suprime; marca `silent=true` (padrão 22:00–07:00 no fuso do perfil; configurável em
+  `users/{uid}/preferences/app`). "Dispensar" = ocultar (não apaga, para não regenerar).
+- **Vencimentos financeiros** geram apenas aviso (sem valores) e nunca criam ou alteram operação financeira.
+- **Agenda × financeiro:** custo previsto jamais vira despesa sozinho; `POST /v1/events/{id}/expense` cria uma
+  despesa real vinculada, uma única vez.
+- **Premissa não verificada:** limite de subrequisições do Worker (ver D-006). Índices: iguais à D-006
+  (campo único; filtros em memória).
+
 ## Pendências
 
 - Ativar proteção da branch `main` no GitHub.

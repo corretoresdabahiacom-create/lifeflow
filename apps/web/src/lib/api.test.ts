@@ -112,4 +112,45 @@ describe("createApiClient", () => {
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer segredo-123");
     expect(await blob.text()).toBe("a,b");
   });
+  it("agenda: monta URLs e métodos de eventos (escopo e data de ocorrência na exclusão)", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }));
+    const api = createApiClient({ baseUrl: "https://api.test", getToken: async () => "t", fetchImpl });
+    await api.listEvents("2026-11-01", "2026-11-30", "medical");
+    await api.deleteEvent("e1", "following", "2026-11-17");
+    await api.deleteEvent("e2", "all");
+    await api.patchEvent("e1", { scope: "one", occurrenceDate: "2026-11-17", changes: { title: "x" } });
+    await api.createEvent({ title: "Dentista", startDate: "2026-11-10" }, "web-key-evt-0001");
+    await api.createEventExpense("e1", { accountId: "a1" }, "web-key-exp-0001");
+    const calls = fetchImpl.mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(calls.map((c) => [c[1].method ?? "GET", c[0]])).toEqual([
+      ["GET", "https://api.test/v1/events?from=2026-11-01&to=2026-11-30&kind=medical"],
+      ["DELETE", "https://api.test/v1/events/e1?scope=following&occurrenceDate=2026-11-17"],
+      ["DELETE", "https://api.test/v1/events/e2?scope=all"],
+      ["PATCH", "https://api.test/v1/events/e1"],
+      ["POST", "https://api.test/v1/events"],
+      ["POST", "https://api.test/v1/events/e1/expense"],
+    ]);
+    expect(new Headers(calls[4]?.[1].headers).get("Idempotency-Key")).toBe("web-key-evt-0001");
+    expect(new Headers(calls[5]?.[1].headers).get("Idempotency-Key")).toBe("web-key-exp-0001");
+  });
+
+  it("agenda: tarefas e notificações usam as rotas e filtros corretos", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ ok: true }));
+    const api = createApiClient({ baseUrl: "https://api.test", getToken: async () => "t", fetchImpl });
+    await api.listTasks({ overdue: "true", priority: null });
+    await api.completeTask("t1");
+    await api.listNotifications(true);
+    await api.generateNotifications();
+    await api.dismissNotification("n1");
+    await api.createReminder({ title: "x", remindAt: "2026-11-09T15:00:00.000Z" }, "web-key-rem-0001");
+    const calls = fetchImpl.mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(calls.map((c) => [c[1].method ?? "GET", c[0]])).toEqual([
+      ["GET", "https://api.test/v1/tasks?overdue=true"],
+      ["POST", "https://api.test/v1/tasks/t1/complete"],
+      ["GET", "https://api.test/v1/notifications?unread=true"],
+      ["POST", "https://api.test/v1/notifications/generate"],
+      ["POST", "https://api.test/v1/notifications/n1/dismiss"],
+      ["POST", "https://api.test/v1/reminders"],
+    ]);
+  });
 });

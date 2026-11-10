@@ -2,6 +2,16 @@
 
 ## [Não lançado]
 
+### Fase 3 — Agenda (2026-11-10)
+- Calendário (dia/semana/mês/lista), eventos com fuso IANA, recorrências (diária, semanal, mensal, anual,
+  personalizada), edição de uma ocorrência / esta e as próximas / toda a série, detecção de conflitos (só avisa).
+- Tarefas com prioridade, prazo, categoria e atraso; lembretes avulsos; central de notificações com horário silencioso.
+- Notificações idempotentes (ids determinísticos), geradas sob demanda; **sem Web Push nem agendador**.
+- Custo previsto de evento vira despesa só por ação explícita, uma única vez.
+- Regras do Firestore para 6 novas coleções; frontend em `/agenda`, `/agenda/tarefas`, `/agenda/notificacoes`.
+- Testes: `pnpm test` = 274 (shared 93, web 57, api 124); emulador (CI) = 113 de regras + 75 de API.
+- Decisão D-007. Limites em `PHASE_03_AGENDA.md`.
+
 ### Fase 2 — Financeiro (2026-11-09)
 - Contas, categorias, receitas, despesas, transferências atômicas, estorno, contas a pagar/receber com baixa
   atômica e idempotente, recorrências sob demanda, relatórios, exportação CSV, conciliação de saldos e painel.
