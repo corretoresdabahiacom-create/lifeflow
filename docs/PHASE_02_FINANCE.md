@@ -45,7 +45,7 @@ Código-fonte da fase em `develop`. Node 22, pnpm 9.15.0. Códigos de saída cap
 | `pnpm build` | 0 | web: JS 448 kB (117 kB gzip); Worker: `wrangler deploy --dry-run` ok, 245 KiB (47,7 KiB gzip) |
 
 **No emulador real do Firestore (somente na CI do GitHub; o emulador não baixa no ambiente de desenvolvimento):**
-Execução de CI do GitHub Actions `42700833811` (commit `ef8bf56`, branch `develop`): todos os jobs verdes.
+Execução de CI do GitHub Actions `42780665654` (commit `a9a4ddf`, branch `develop`; a anterior `42700833811` também passou): todos os jobs verdes.
 
 | Suíte | Resultado |
 |---|---|
