@@ -2,6 +2,18 @@
 
 ## [Não lançado]
 
+### Fase 2 — Financeiro (2026-11-09)
+- Contas, categorias, receitas, despesas, transferências atômicas, estorno, contas a pagar/receber com baixa
+  atômica e idempotente, recorrências sob demanda, relatórios, exportação CSV, conciliação de saldos e painel.
+- Dinheiro em centavos inteiros; saldo por incremento atômico no mesmo commit do lançamento; idempotência por
+  ids determinísticos (`Idempotency-Key` obrigatória nas criações); prevenção de duplicidade.
+- Firestore Security Rules das 6 novas coleções (sem exclusão; imutabilidade; conta existente).
+- Frontend: telas de lançamentos/transferências, contas e categorias, a pagar e receber, relatórios e painel com
+  números reais da API.
+- Testes: `pnpm test` = 170 (shared 62, web 31, api 77); emulador (CI) = 70 de regras + 31 de API.
+- Ajuste em teste da Fase 1: `accounts` deixou de ser coleção "não declarada".
+- Decisão D-006. Pendências e limites em `PHASE_02_FINANCE.md`.
+
 ### Fase 1 — Fundação (2026-11-09)
 - Substituição do Supabase por Firebase (Firestore + Auth), D-004; modelo `deepseek-flash` registrado (D-005).
 - Monorepo pnpm: `apps/web`, `workers/api`, `packages/shared`, `firebase`.

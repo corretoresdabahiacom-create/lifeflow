@@ -13,9 +13,25 @@
 |---|---|
 | `pnpm lint` | ESLint em todo o monorepo |
 | `pnpm typecheck` | `tsc` em `shared`, `web`, `api` e `firebase` |
-| `pnpm test` | Vitest: `shared`, `web` (jsdom), `api` (Worker com mocks) |
+| `pnpm test` | Vitest: `shared`, `web` (jsdom), `api` (Worker com Firestore falso; exclui os testes de integração) |
 | `pnpm build` | build do frontend (Vite) e do Worker (`wrangler --dry-run`) |
 | `pnpm test:rules` | Security Rules no emulador do Firestore (exige Java 17+ e acesso a `storage.googleapis.com`) |
+| `pnpm test:integration` | Mesma suíte financeira do Worker contra o emulador real, com as regras reais (mesmos requisitos) |
+
+## Estado (Fase 2)
+
+Resultados e mapa dos testes obrigatórios em `PHASE_02_FINANCE.md`. Resumo: lint, typecheck, test (170: shared 62,
+web 31, api 77) e build passaram localmente; `test:rules` (70) e `test:integration` (31) rodaram **somente na CI**
+(o emulador não baixa no ambiente de desenvolvimento). Roteiro manual no navegador com Firebase real: não executado.
+
+### Estratégia da suíte financeira
+
+`workers/api/test/finance.suite.ts` define os testes uma vez e roda duas vezes: contra o **Firestore falso**
+(`finance.fake.test.ts`, rápido, local) e contra o **emulador real** (`finance.integration.test.ts`, com as
+Security Rules reais, na CI). Testes que dependem de espiar chamadas ou injetar falhas rodam só no falso
+(4 testes). O falso foi escrito por mim e implementa só o que o Worker usa; por isso o emulador é a prova
+real de commit atômico, pré-condições, incrementos, consultas e regras. `firestore.commit.test.ts` confere o
+formato exato das chamadas REST (`documents:commit`, `runQuery`).
 
 ## Estado (Fase 1)
 

@@ -74,6 +74,49 @@ Problema, Alternativas, Justificativa, Impacto, Aprovação.
   documentação oficial da DeepSeek; será conferido com uma chamada autorizada na Fase 4.
   Nenhuma chamada paga sem autorização.
 
+## D-006 — Modelo financeiro no Firestore (Fase 2)
+
+- **Data:** 2026-11-09
+- **Decisão:**
+  1. **Dinheiro em centavos inteiros** (`amountCents`, `balanceCents`, `signedCents`). Decimais são
+     rejeitados na API e nas regras. Teto de R$ 1 bilhão por valor.
+  2. **Livro-razão imutável + saldo denormalizado.** `transactions` nunca é apagado: o estorno muda
+     `status` de `posted` para `voided`. O saldo atual da conta (`balanceCents`) é atualizado por
+     **incremento atômico no servidor** (`updateTransforms.increment`) no MESMO `documents:commit` do
+     lançamento. Não há leitura-e-soma no Worker, então não existe condição de corrida de saldo.
+  3. **Transferência = 1 commit** com 5 gravações: documento `transfers`, duas pernas em `transactions`
+     (`transfer_out` e `transfer_in`) e os dois incrementos de saldo. Tudo ou nada.
+  4. **Idempotência por id determinístico.** `Idempotency-Key` (obrigatória nas criações) gera o id do
+     documento (`sha256(escopo:chave)`); a gravação usa `currentDocument.exists=false`. Repetição devolve o
+     resultado original (200 + `Idempotent-Replay`); mesma chave com conteúdo diferente → 422;
+     requisições simultâneas com a mesma chave geram um único efeito.
+  5. **Baixa de conta a pagar/receber** = 1 commit: conta paga (pré-condição `updateTime` lido) + lançamento
+     (id `pay_<conta>_<n>`, `exists=false`) + saldo. Segunda baixa → 409 `already_paid`. Estornar o
+     lançamento da baixa reabre a conta.
+  6. **Duplicidade provável** (mesma conta, tipo, valor, data e descrição, com chave diferente) → 409
+     `possible_duplicate`; o usuário confirma com `allowDuplicate=true`.
+  7. **Mapeamento do contrato (Parte G):** `financial_reminders` → `payables` (contas a pagar/receber, com
+     vencimento e baixa); `recurring_transactions` → `recurring` (regras de recorrência).
+  8. **Recorrência sem agendador.** A regra só gera contas quando o usuário pede
+     (`POST /v1/recurring/materialize`). Ids determinísticos (`rec_<regra>_<data>`) impedem duplicidade.
+     Máximo de 20 contas por chamada (limite de subrequisições do Worker; `hasMore` indica continuação).
+     Agendamento automático fica para a Fase 3, junto com notificações.
+  9. **Relatórios por agregação em memória** sobre consulta por período (até 5000 lançamentos; acima
+     disso a resposta traz `truncated: true`). Sem índices compostos: consultas usam só índices de campo
+     único (data) e os demais filtros são aplicados em memória.
+  10. **Conciliação** (`GET /v1/reconcile`) compara o saldo guardado com `saldo inicial + lançamentos
+      efetivados`, para detectar divergência.
+- **Limite assumido (honesto):** como o Worker usa o token do usuário (sem conta de serviço, D-004), um
+  cliente mal-intencionado poderia gravar direto no Firestore com o próprio token. As regras impedem
+  acesso a dados de outros usuários, exigem formato e imutabilidade (valor, conta, tipo e data do
+  lançamento não mudam; nada é apagado; saldo inicial = saldo na criação), mas **não provam** que o saldo
+  bate com os lançamentos. Isso é detectável por `reconcile` e afeta apenas os dados do próprio usuário.
+  Reforço possível: regras com `getAfter()` ou conta de serviço restrita, a decidir.
+- **Premissa não verificada:** limite de subrequisições do Worker (assumido 50 por requisição no plano
+  gratuito, de memória). Não consultei a documentação nesta sessão; conferir antes do deploy.
+- **Alternativa não adotada:** transações do Firestore (leitura-modificação-escrita) com `beginTransaction`;
+  descartada porque incrementos atômicos dispensam a leitura e reduzem contenção e custo.
+
 ## Pendências
 
 - Ativar proteção da branch `main` no GitHub.

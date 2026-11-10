@@ -6,6 +6,11 @@ import { ThemeProvider } from "./app/ThemeProvider";
 import { AuthProvider } from "./auth/AuthProvider";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { DashboardPage } from "./pages/DashboardPage";
+import { AccountsPage } from "./pages/finance/AccountsPage";
+import { FinanceLayout } from "./pages/finance/FinanceLayout";
+import { PayablesPage } from "./pages/finance/PayablesPage";
+import { ReportsPage } from "./pages/finance/ReportsPage";
+import { TransactionsPage } from "./pages/finance/TransactionsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -29,7 +34,12 @@ export function App() {
               }
             >
               <Route index element={<DashboardPage />} />
-              <Route path="financas" element={<PlaceholderPage title="Finanças" phase="Fase 2" />} />
+              <Route path="financas" element={<FinanceLayout />}>
+                <Route index element={<TransactionsPage />} />
+                <Route path="contas" element={<AccountsPage />} />
+                <Route path="pagar-receber" element={<PayablesPage />} />
+                <Route path="relatorios" element={<ReportsPage />} />
+              </Route>
               <Route path="agenda" element={<PlaceholderPage title="Agenda e tarefas" phase="Fase 3" />} />
               <Route path="assistente" element={<PlaceholderPage title="Assistente" phase="Fase 4" />} />
               <Route path="ajustes" element={<SettingsPage />} />

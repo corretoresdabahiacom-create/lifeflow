@@ -7,7 +7,7 @@ proteção XSS/CSRF/injeção, secrets apenas em ambiente, auditoria, gestão de
 de endpoints administrativos, proteção contra prompt injection, sem dados financeiros em
 prompts sem necessidade.
 
-## Estado na Fase 1
+## Estado (Fases 1 e 2)
 
 | Controle | Estado |
 |---|---|
@@ -19,6 +19,12 @@ prompts sem necessidade.
 | CORS restrito à origem configurada | Implementado |
 | Logs estruturados sem token/corpo | Implementado |
 | Cache: nada de resposta autenticada no service worker | Implementado (cache só de arquivos estáticos) |
+| Isolamento dos dados financeiros (contas, lançamentos, transferências, contas a pagar, recorrências) | Implementado; 51 testes de regras e 31 testes de API aprovados no emulador (CI) |
+| Idempotência e prevenção de duplicidade em operações financeiras | Implementado e testado (inclui requisições simultâneas) |
+| Ids de documento controlados (`^[A-Za-z0-9_-]{1,80}$`) contra manipulação de caminho | Implementado (API, regras e rotas) |
+| Exportação CSV sem injeção de fórmulas; token só em cabeçalho | Implementado e testado |
+| Livro-razão sem exclusão (estorno em vez de delete) | Implementado nas regras |
+| Garantia de que saldo = lançamentos contra cliente mal-intencionado | **Parcial**: regras não provam; há conciliação (`/v1/reconcile`); ver D-006 |
 | Rate limiting | **Pendente** (fases seguintes) |
 | Auditoria (`audit_logs`) | **Pendente** (fases seguintes) |
 | Endpoints administrativos | **Pendente** (Fase 5) |

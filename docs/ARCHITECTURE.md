@@ -1,6 +1,6 @@
 # ARCHITECTURE
 
-> Estado (Fase 1): fundação implementada. Ver `PHASE_01_FOUNDATION.md` para evidências.
+> Estado (Fase 2): fundação e módulo financeiro implementados. Ver `PHASE_01_FOUNDATION.md` para evidências.
 
 ## Visão geral
 
@@ -21,11 +21,17 @@ Autenticação com Firebase Auth. Contrato em `MASTER_PROMPT.md`, adaptado por `
 7. Token expirado: o Worker responde `401` com `WWW-Authenticate: Bearer error="invalid_token"`
    e o SDK do frontend renova a sessão.
 
-## Estrutura de dados (Fase 1)
+## Estrutura de dados (Fases 1 e 2)
 
 ```
 users/{uid}                      perfil (displayName, locale, timezone, currency)
 users/{uid}/preferences/{key}    preferências (documento "app")
+users/{uid}/accounts/{id}        contas (saldo atual por incremento atômico)
+users/{uid}/categories/{id}      categorias de receita/despesa
+users/{uid}/transactions/{id}    livro-razão (imutável; estorno em vez de exclusão)
+users/{uid}/transfers/{id}       transferências (1 commit: transferência + 2 pernas + 2 saldos)
+users/{uid}/payables/{id}        contas a pagar/receber (baixa atômica)
+users/{uid}/recurring/{id}       regras de recorrência (geração sob demanda)
 ```
 
 Todas as coleções pessoais ficam sob `users/{uid}`; a regra de propriedade é por caminho.
@@ -46,7 +52,8 @@ Todas as coleções pessoais ficam sob `users/{uid}`; a regra de propriedade é 
 | Firebase Auth (frontend) | Código implementado; sem projeto real configurado |
 | Validação de JWT Firebase no Worker | Código implementado e testado com mocks (chaves geradas nos testes) |
 | Firestore REST via Worker | Código implementado e testado com mocks |
-| Firestore Security Rules | Escritas; 19 testes aprovados no emulador do Firestore (CI) |
+| Firestore Security Rules | Escritas; 70 testes de regras aprovados no emulador do Firestore (CI): 19 da Fase 1 + 51 financeiros |
+| Módulo financeiro (Worker + Firestore) | Implementado; 31 testes de API aprovados contra o emulador real com as regras reais (CI) |
 | DeepSeek (LLM) | Não implementado |
 | Groq (transcrição) | Não implementado |
 | Mercado Pago | Não implementado |
