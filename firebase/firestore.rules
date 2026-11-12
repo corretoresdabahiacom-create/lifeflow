@@ -133,7 +133,7 @@ service cloud.firestore {
         allow list: if isOwner(uid);
         allow create: if isOwner(uid) && validConsent();
         allow update: if isOwner(uid) && validConsent() && request.resource.data.uid == resource.data.uid;
-        allow delete: if isOwner(uid);
+        allow delete: if false;
       }
 
       // =====================================================================
