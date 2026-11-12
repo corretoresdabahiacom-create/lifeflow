@@ -1,5 +1,5 @@
 import type { PaymentView, PlanConfig, SubscriptionView } from "@lifeflow/shared";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   PaymentProviderError,
   WebhookSignatureError,
@@ -141,9 +141,27 @@ export function defineBillingSuite(
     beforeAll(async () => {
       signer = await makeSigner("k1");
     });
+    // Planos, assinaturas, eventos e logs administrativos são GLOBAIS (não por usuário). No emulador real eles
+    // sobreviveriam entre testes e arquivos, então cada teste começa (e a suíte termina) com essas coleções vazias.
+    const resetGlobal = async (w: BillingWorld) => {
+      const sys = await w.sys();
+      for (const collection of ["plans", "subscriptions", "webhookEvents", "adminLogs"]) {
+        for (;;) {
+          const docs = await sys.query("", { collection, limit: 200 });
+          if (docs.length === 0) break;
+          await sys.commit(docs.map((d) => ({ path: `${collection}/${d.id}`, delete: true })));
+        }
+      }
+    };
+    let last: BillingWorld | undefined;
+    afterAll(async () => {
+      if (last) await resetGlobal(last);
+    });
     const world = async (opts: BillingWorldOptions = {}) => {
       const w = await makeWorld(signer, opts);
       w.clock.now = START;
+      await resetGlobal(w);
+      last = w;
       return w;
     };
     let reqSeq = 0;
@@ -656,6 +674,7 @@ export function defineBillingSuite(
 
     it.runIf(options.fake)("a conta de serviço NUNCA é usada nas rotas normais: só o token do usuário vai ao banco", async () => {
       const w = await world();
+      w.fake!.calls.length = 0; // descarta as chamadas de preparação (limpeza global usa o caminho privilegiado)
       await w.A.get("/v1/accounts");
       await w.A.get("/v1/billing/subscription");
       const tokens = new Set(w.fake!.calls.map((c) => c.authorization));

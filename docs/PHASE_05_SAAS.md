@@ -46,13 +46,13 @@ da documentação e testado com respostas simuladas e HMAC real; **nunca falou c
 |---|---|---|
 | Criação de assinatura, webhook válido/inválido, idempotência, mudança de plano, cancelamento, limites, carência, isolamento, painel admin, não acesso ao conteúdo dos clientes (36 testes) | `workers/api/test/billing.suite.ts` via `billing.fake.test.ts` | **Aprovado** (Firestore falso em memória) |
 | Mesma suíte contra o emulador real com as regras reais | `billing.integration.test.ts` | **Não executado localmente** (emulador só na CI) |
-| Adaptador Mercado Pago (formato dos pedidos, mapeamento de status/erros, HMAC válido/inválido/adulterado) | `mercadopago.test.ts` | Aprovado (12) |
+| Adaptador Mercado Pago (formato dos pedidos, mapeamento de status/erros, HMAC válido/inválido/adulterado) | `mercadopago.test.ts` | Aprovado (13) |
 | Token da conta de serviço (JWT RS256 real contra endpoint simulado), cache, erros | `system.test.ts` | Aprovado (4) |
 | Esquemas e padrões de plano | `packages/shared/src/billing.test.ts` | Aprovado (3) |
 | Telas `/assinatura` e `/admin` (componentes, API simulada) | `BillingPage.test.tsx`, `AdminPage.test.tsx` | Aprovado (13) |
 | Regras do Firestore de planos/assinatura/pagamentos/logs | `firebase/tests/billing.rules.test.ts` | **Não executado localmente** (CI) |
 
-Totais locais: `pnpm test` = shared 100 + web 82 + api 239 = **421**; `pnpm lint`, `pnpm typecheck` e `pnpm build` ok.
+Totais locais: `pnpm test` = shared 100 + web 82 + api 240 = **422**; `pnpm lint`, `pnpm typecheck` e `pnpm build` ok.
 Resultado da CI: ver registro no fim deste arquivo.
 
 ## Checklist da fase
