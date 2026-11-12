@@ -102,3 +102,23 @@ Códigos do assistente: `400` validação; `403` `audio_consent_required`, `voic
 `reinforced_confirmation_required`, `idempotency_key_reuse`; `429` `ai_limit_reached`, `ai_voice_limit_reached`;
 `502` `ai_provider_error`; `503` `ai_not_configured`, `ai_provider_busy`; `504` `ai_provider_timeout`.
 CORS agora também permite o cabeçalho `X-Audio-Seconds`.
+
+## Planos, assinatura e administração (Fase 5)
+
+Cobrança (autenticado; erros `{ error: { code, message } }`):
+
+| Rota | Descrição |
+|---|---|
+| `GET /v1/billing/plans` | Planos ativos (+ o contratado) e o plano efetivo |
+| `GET /v1/billing/subscription` | Assinatura (visão do usuário) e limites do plano efetivo |
+| `GET /v1/billing/history` | Pagamentos do usuário |
+| `POST /v1/billing/checkout` | `{ planId: "pro" ou "premium_ai" }`, `Idempotency-Key` obrigatória → `201 { checkoutUrl }`; `409 subscription_exists`, `422 email_required`, `plan_unavailable`, `502 payment_provider_error`, `503 billing_not_configured` |
+| `POST /v1/billing/change` | Troca de plano (upgrade já; downgrade na renovação); `no_active_subscription`, `same_plan` |
+| `POST /v1/billing/cancel` | Cancela no provedor; mantém o plano até o fim do período pago |
+| `POST /v1/billing/sync` | Relê o estado no provedor (útil se o webhook atrasou) |
+
+Webhook (sem login): `POST /webhooks/mercadopago` — `401 invalid_signature`, `413` corpo grande, `200 {status: processed|duplicate|ignored}`, `503 webhook_retry`.
+
+Administração (`/v1/admin/*`, exige claim `admin`; `403 admin_required` caso contrário; tudo auditado):
+`GET overview`, `GET|PUT plans[/{id}]`, `GET subscriptions[?plan&status&limit]`, `GET subscriptions/{uid}`,
+`GET usage[?month=AAAA-MM]`, `GET logs?kind=admin|webhooks`, `GET integrations`. Não existe rota de conteúdo financeiro.

@@ -10,6 +10,7 @@ import { AuthContext, type AuthContextValue, type SessionUser } from "./context"
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState<boolean>(isFirebaseConfigured);
 
   useEffect(() => {
@@ -18,6 +19,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser ? { uid: firebaseUser.uid, email: firebaseUser.email } : null);
       setLoading(false);
+      if (!firebaseUser) {
+        setIsAdmin(false);
+        return;
+      }
+      firebaseUser
+        .getIdTokenResult()
+        .then((result) => setIsAdmin(result.claims["admin"] === true))
+        .catch(() => setIsAdmin(false));
     });
   }, []);
 
@@ -30,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
+      isAdmin,
       loading,
       configured: isFirebaseConfigured,
       async signIn(email, password) {
@@ -48,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return current.getIdToken(forceRefresh);
       },
     }),
-    [user, loading, requireAuth],
+    [user, isAdmin, loading, requireAuth],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

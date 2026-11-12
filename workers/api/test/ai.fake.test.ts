@@ -1,6 +1,6 @@
 import { defineAiSuite, ScriptedLLM, ScriptedSTT, type AiWorld, type AiWorldOptions } from "./ai.suite";
 import { Client, tokensFor } from "./finance.suite";
-import { fakeFirestore, makeApp, type Clock, type Signer } from "./helpers";
+import { fakeFirestore, grantPlan, makeApp, uidOfToken, type Clock, type Signer } from "./helpers";
 
 async function fakeWorld(signer: Signer, options: AiWorldOptions): Promise<AiWorld> {
   const fake = fakeFirestore();
@@ -10,11 +10,12 @@ async function fakeWorld(signer: Signer, options: AiWorldOptions): Promise<AiWor
   const app = makeApp(
     signer,
     ((input: RequestInfo | URL, init?: RequestInit) => fake.fetchImpl(input, init)) as typeof fetch,
-    { AI_DEFAULT_PLAN: options.plan ?? "free" },
+    {},
     clock,
     { ...(options.noLlm ? {} : { llm }), stt },
   );
   const { a, b } = await tokensFor(signer);
+  if (options.plan) await grantPlan(fake.fetchImpl, "https://firestore.test", uidOfToken(a), options.plan);
   return { fake, clock, llm, stt, A: new Client(app, a), B: new Client(app, b) };
 }
 

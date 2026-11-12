@@ -29,6 +29,8 @@ export class PreconditionFailedError extends Error {
 
 export interface StoredDoc {
   id: string;
+  /** Caminho completo relativo (`users/{uid}/aiUsage/2026-11`). */
+  path: string;
   data: DocData;
   updateTime: string;
 }
@@ -46,6 +48,8 @@ export interface QuerySpec {
   /** Campo de ordenação (desempate por id do documento, na mesma direção). */
   orderBy?: { field: string; direction: "ASCENDING" | "DESCENDING" };
   limit: number;
+  /** Consulta em TODAS as subcoleções com este nome (collection group). Sem `after`. */
+  group?: boolean;
   /** Continua DEPOIS deste documento (valor do campo de ordenação + id). */
   after?: { value: string | number | null; id: string };
 }
@@ -193,7 +197,7 @@ export class FirestoreClient {
   /** Consulta uma subcoleção direta de `parent` (ex.: `users/{uid}`). Leitura: repete 1 vez se transitório. */
   async query(parent: string, spec: QuerySpec): Promise<StoredDoc[]> {
     const structuredQuery: Record<string, unknown> = {
-      from: [{ collectionId: spec.collection }],
+      from: [{ collectionId: spec.collection, ...(spec.group ? { allDescendants: true } : {}) }],
       limit: spec.limit,
     };
     const filters = (spec.filters ?? []).map((f) => ({
@@ -218,7 +222,7 @@ export class FirestoreClient {
 
     const response = await this.request(
       "POST",
-      `${this.base}/${parent}:runQuery`,
+      parent === "" ? `${this.base}:runQuery` : `${this.base}/${parent}:runQuery`,
       JSON.stringify({ structuredQuery }),
       1,
     );
@@ -231,11 +235,31 @@ export class FirestoreClient {
       if (!row.document) continue;
       docs.push({
         id: row.document.name.split("/").pop() ?? "",
+        path: row.document.name.slice(row.document.name.indexOf("/documents/") + "/documents/".length),
         data: decodeFields(row.document.fields),
         updateTime: row.document.updateTime ?? "",
       });
     }
     return docs;
+  }
+
+  /** Conta documentos de uma coleção raiz (`runAggregationQuery`), sem ler o conteúdo. */
+  async count(collection: string, filters: QueryFilter[] = []): Promise<number> {
+    const structuredQuery: Record<string, unknown> = { from: [{ collectionId: collection }] };
+    const where = filters.map((f) => ({
+      fieldFilter: { field: { fieldPath: f.field }, op: f.op, value: encodeValue(f.value) },
+    }));
+    if (where.length === 1) structuredQuery["where"] = where[0];
+    else if (where.length > 1) structuredQuery["where"] = { compositeFilter: { op: "AND", filters: where } };
+    const response = await this.request(
+      "POST",
+      `${this.base}:runAggregationQuery`,
+      JSON.stringify({ structuredAggregationQuery: { structuredQuery, aggregations: [{ alias: "n", count: {} }] } }),
+      1,
+    );
+    await this.assertOk(response);
+    const rows = (await response.json()) as Array<{ result?: { aggregateFields?: { n?: { integerValue?: string } } } }>;
+    return Number(rows.find((r) => r.result)?.result?.aggregateFields?.n?.integerValue ?? 0);
   }
 
   private resourceName(path: string): string {

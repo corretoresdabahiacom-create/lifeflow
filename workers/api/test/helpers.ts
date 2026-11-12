@@ -1,4 +1,5 @@
 import type { LLMProvider, SpeechToTextProvider } from "../src/ai/providers";
+import type { PaymentProvider } from "../src/billing/provider";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import type { KeyLike, JWK } from "jose";
 import { createHandler } from "../src/app";
@@ -36,11 +37,13 @@ export interface TokenOptions {
   expiresAt?: number;
   issuedAt?: number;
   kid?: string;
+  /** Claim `admin: true` (só o administrador do projeto Firebase consegue defini-la). */
+  admin?: boolean;
 }
 
 export async function signToken(signer: Signer, options: TokenOptions = {}): Promise<string> {
   const nowSec = Math.floor(Date.now() / 1000);
-  const jwt = new SignJWT({ email: options.email ?? "user@example.com", auth_time: nowSec - 10 })
+  const jwt = new SignJWT({ email: options.email ?? "user@example.com", auth_time: nowSec - 10, ...(options.admin ? { admin: true } : {}) })
     .setProtectedHeader({ alg: "RS256", kid: options.kid ?? "k1" })
     .setIssuer(options.issuer ?? `https://securetoken.google.com/${PROJECT_ID}`)
     .setAudience(options.audience ?? PROJECT_ID)
@@ -157,17 +160,26 @@ export function fakeFirestore(initial: Record<string, DocData> = {}) {
     type Order = { field: { fieldPath: string }; direction?: string };
     const { structuredQuery: sq } = JSON.parse(body) as {
       structuredQuery: {
-        from: Array<{ collectionId: string }>;
+        from: Array<{ collectionId: string; allDescendants?: boolean }>;
         where?: Filter | { compositeFilter: { filters: Filter[] } };
         orderBy?: Order[];
         limit?: number;
         startAt?: { values: RestValueIn[]; before?: boolean };
       };
     };
-    const prefix = `${parent}/${sq.from[0]?.collectionId}/`;
+    const collectionId = sq.from[0]?.collectionId ?? "";
+    const group = sq.from[0]?.allDescendants === true;
+    const prefix = parent === "" ? `${collectionId}/` : `${parent}/${collectionId}/`;
+    // Em consulta de grupo o "id" vira o caminho completo para o resultado reconstruir o nome do documento.
     let rows: FakeRow[] = [...docs.entries()]
-      .filter(([path]) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/"))
-      .map(([path, data]) => ({ id: path.slice(prefix.length), data }));
+      .filter(([path]) => {
+        if (group) {
+          const parts = path.split("/");
+          return parts.length % 2 === 0 && parts[parts.length - 2] === collectionId;
+        }
+        return path.startsWith(prefix) && !path.slice(prefix.length).includes("/");
+      })
+      .map(([path, data]) => ({ id: group ? path : path.slice(prefix.length), data }));
 
     const filters: Filter[] = !sq.where ? [] : "compositeFilter" in sq.where ? sq.where.compositeFilter.filters : [sq.where];
     for (const { fieldFilter } of filters) {
@@ -213,7 +225,7 @@ export function fakeFirestore(initial: Record<string, DocData> = {}) {
       rows.length === 0
         ? [{ readTime }]
         : rows.map((row) => {
-            const path = `${prefix}${row.id}`;
+            const path = group ? row.id : `${prefix}${row.id}`;
             return {
               document: {
                 name: `projects/${PROJECT_ID}/databases/(default)/documents/${path}`,
@@ -243,8 +255,17 @@ export function fakeFirestore(initial: Record<string, DocData> = {}) {
       if (typeof failure === "number") return new Response("{}", { status: failure });
       return commit(body ?? "{}");
     }
+    if (method === "POST" && url.pathname.endsWith("/documents:runQuery")) return runQuery("", body ?? "{}");
     if (method === "POST" && url.pathname.endsWith(":runQuery")) {
       return runQuery(pathAfterDocuments(url).replace(/:runQuery$/, ""), body ?? "{}");
+    }
+    if (method === "POST" && url.pathname.endsWith("/documents:runAggregationQuery")) {
+      const parsed = JSON.parse(body ?? "{}") as { structuredAggregationQuery: { structuredQuery: Record<string, unknown> } };
+      const query = { ...parsed.structuredAggregationQuery.structuredQuery };
+      delete query["limit"];
+      const result = JSON.parse(await runQuery("", JSON.stringify({ structuredQuery: query })).text()) as Array<{ document?: unknown }>;
+      const n = result.filter((r) => r.document).length;
+      return new Response(JSON.stringify([{ result: { aggregateFields: { n: { integerValue: String(n) } } } }]), { status: 200 });
     }
 
     const path = pathAfterDocuments(url);
@@ -294,12 +315,13 @@ export function makeApp(
   fetchImpl: typeof fetch,
   envOverride: Partial<Env> = {},
   clock?: Clock,
-  providers: { llm?: LLMProvider; stt?: SpeechToTextProvider } = {},
+  providers: { llm?: LLMProvider; stt?: SpeechToTextProvider; payments?: PaymentProvider } = {},
 ) {
   const handle = createHandler({
     fetchImpl,
     ...(providers.llm ? { llm: providers.llm } : {}),
     ...(providers.stt ? { stt: providers.stt } : {}),
+    ...(providers.payments ? { payments: providers.payments } : {}),
     keyResolver: () => createLocalJWKSet({ keys: [signer.jwk] }),
     now: () => clock?.now ?? new Date("2026-11-09T12:00:00.000Z"),
   });
@@ -329,3 +351,45 @@ export const putJson = (body: unknown): RequestInit => ({
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(body),
 });
+
+/**
+ * Concede um plano a um usuário gravando `subscriptions/{uid}` pelo MESMO caminho privilegiado do Worker
+ * (no emulador o token "owner" ignora as regras; no Firestore falso não há regras). Só para preparar testes.
+ */
+export async function grantPlan(
+  fetchImpl: typeof fetch,
+  baseUrl: string,
+  uid: string,
+  plan: "free" | "pro" | "premium_ai",
+  over: Record<string, string | number | boolean | null> = {},
+): Promise<void> {
+  if (plan === "free") return;
+  const { createSystemDb } = await import("../src/system");
+  const sys = await createSystemDb({ FIREBASE_PROJECT_ID: PROJECT_ID, ALLOWED_ORIGIN: ORIGIN, FIRESTORE_BASE_URL: baseUrl }, fetchImpl);
+  await sys.commit([
+    {
+      path: `subscriptions/${uid}`,
+      fields: {
+        uid,
+        planId: plan,
+        pendingPlanId: null,
+        status: "active",
+        providerSubscriptionId: `sub_${uid}`,
+        priceCents: plan === "pro" ? 1490 : 2990,
+        currentPeriodEnd: "2027-12-31T00:00:00.000Z",
+        graceUntil: null,
+        cancelAtPeriodEnd: false,
+        trialEndsAt: null,
+        checkoutUrl: null,
+        createdAt: "2026-11-01T00:00:00.000Z",
+        updatedAt: "2026-11-01T00:00:00.000Z",
+        ...over,
+      },
+    },
+  ]);
+}
+
+/** `sub` de um ID token (só para testes). */
+export function uidOfToken(token: string): string {
+  return (JSON.parse(atob((token.split(".")[1] as string).replace(/-/g, "+").replace(/_/g, "/"))) as { sub: string }).sub;
+}

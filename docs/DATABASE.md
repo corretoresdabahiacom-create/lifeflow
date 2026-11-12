@@ -82,3 +82,16 @@ Todas em `users/{uid}/…`, com `uid` no documento; regras por dono.
 
 Lançamentos ganharam `origin` (`manual`|`ai`) e `aiActionId` (opcionais; ausentes = manual). Lembretes agora aceitam
 atualização de `title` e `remindAt`. Nenhum áudio é armazenado.
+
+## Coleções de SaaS (Fase 5)
+
+| Caminho | Quem escreve | Conteúdo |
+|---|---|---|
+| `plans/{free, pro, premium_ai}` | Admin (via backend) | Nome, preço em centavos, mensagens, minutos de voz, nível de relatório, dias de teste, ativo. Ausente → padrão do código |
+| `subscriptions/{uid}` | Backend | planId, pendingPlanId, status (pending, active, past_due, canceled), providerSubscriptionId, priceCents, currentPeriodEnd, graceUntil, cancelAtPeriodEnd, trialEndsAt, checkoutUrl, checkoutKeyHash, datas. O dono só **lê** |
+| `users/{uid}/billingPayments/{id}` | Backend (webhook) | Cobranças (id determinístico do provedor). O dono só **lê** |
+| `webhookEvents/{hash}` | Backend | Deduplicação e situação (received, processed, ignored, failed). Nenhum cliente acessa |
+| `adminLogs/{uuid}` | Backend | Auditoria administrativa só de inclusão. Nenhum cliente acessa |
+
+Índices de grupo de coleção declarados em `firebase/firestore.indexes.json` (`aiUsage.updatedAt`, `aiLogs.event`,
+`aiLogs.createdAt`); **não validados em projeto real**.

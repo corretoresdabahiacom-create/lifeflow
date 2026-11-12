@@ -353,7 +353,7 @@ export async function chat(ctx: Ctx, deps: AiDeps, input: ChatInput): Promise<Ai
   const conversationId = input.conversationId ?? (await sha256Hex(`aiconv:${input.idempotencyKey}`)).slice(0, 40);
   const userMessageId = (await sha256Hex(`aimsg:${conversationId}:${input.idempotencyKey}`)).slice(0, 40);
   const assistantMessageId = `${userMessageId}a`;
-  const usage = await readUsage(ctx, deps.env);
+  const usage = await readUsage(ctx);
 
   // 1) Repetição da mesma mensagem (mesma Idempotency-Key): devolve a resposta já gravada, sem novo consumo.
   const existingUser = await ctx.db.get(p.aiMessage(conversationId, userMessageId));
@@ -500,7 +500,7 @@ export async function chat(ctx: Ctx, deps: AiDeps, input: ChatInput): Promise<Ai
   ]);
   await addUsage(ctx, { messages: 1, inputTokens, outputTokens });
 
-  const after = await readUsage(ctx, deps.env);
+  const after = await readUsage(ctx);
   return {
     conversationId,
     reply: { id: assistantMessageId, role: "assistant", content: String(replyDoc["content"]), createdAt: timestamp },

@@ -17,6 +17,11 @@ import { HttpError } from "./errors";
 import { FirestoreClient, type DocData } from "./firestore";
 import { handleAgenda } from "./agenda";
 import { handleAi } from "./ai/routes";
+import type { PaymentProvider } from "./billing/provider";
+import { handleAdmin } from "./admin/routes";
+import { handleBilling } from "./billing/routes";
+import { createSystemDb } from "./system";
+import { handleWebhook } from "./billing/webhook";
 import type { LLMProvider, SpeechToTextProvider } from "./ai/providers";
 import { handleFinance } from "./finance";
 import { allow, json, parseBody } from "./http";
@@ -29,6 +34,7 @@ export interface AppDeps {
   /** Substitutos de provedores (testes). Em produção são criados a partir do ambiente. */
   llm?: LLMProvider;
   stt?: SpeechToTextProvider;
+  payments?: PaymentProvider;
 }
 
 export function createHandler(deps: AppDeps = {}) {
@@ -64,6 +70,9 @@ export function createHandler(deps: AppDeps = {}) {
       if (url.pathname === "/healthz") {
         if (request.method !== "GET") throw new HttpError(405, "method_not_allowed", "Método não permitido");
         return finish(json({ status: "ok" }));
+      }
+      if (url.pathname === "/webhooks/mercadopago") {
+        return finish(await handleWebhook(request, url, { env, fetchImpl: deps.fetchImpl ?? fetch, ...(deps.payments ? { payments: deps.payments } : {}) }, now));
       }
       if (!url.pathname.startsWith("/v1/")) throw new HttpError(404, "not_found", "Rota não encontrada");
 
@@ -113,6 +122,16 @@ async function route(
   if (finance) return finance;
   const agenda = await handleAgenda({ request, url, uid: user.uid, db, now });
   if (agenda) return agenda;
+  if (url.pathname.startsWith("/v1/admin/")) {
+    // Autorização no servidor: a claim vem do token já validado, nunca do cliente.
+    if (!user.admin) throw new HttpError(403, "admin_required", "Acesso restrito a administradores");
+    return handleAdmin({ request, url, uid: user.uid, ...(user.email ? { email: user.email } : {}), now, sys: await createSystemDb(env, deps.fetchImpl ?? fetch), env });
+  }
+  const billing = await handleBilling(
+    { request, url, uid: user.uid, db, now },
+    { env, fetchImpl: deps.fetchImpl ?? fetch, ...(deps.payments ? { payments: deps.payments } : {}), ...(user.email ? { email: user.email } : {}) },
+  );
+  if (billing) return billing;
   const ai = await handleAi(
     { request, url, uid: user.uid, db, now },
     {

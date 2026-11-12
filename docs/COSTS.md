@@ -77,3 +77,11 @@ Controles de custo implementados: limite mensal de mensagens e de minutos de voz
 5 rodadas por mensagem, saída ≤ 1024 tokens, mensagem ≤ 2000 caracteres, áudio ≤ 60 s e ≤ 1,5 MB, falhas não consomem.
 Leituras do Firestore por mensagem: 2–4 de consumo/configuração mais as das ferramentas usadas (as listagens leem
 até o limite de cada consulta).
+
+## Estado (Fase 5) — SaaS
+
+Nenhuma chamada paga foi feita. O Mercado Pago cobra taxa por transação aprovada (percentual do provedor, **não
+verificada** nesta fase — conferir na conta antes de fixar preços). Infraestrutura: leituras/escritas extras do
+Firestore (assinatura + plano em cada checagem de limite; o webhook lê dedup, assinatura, plano e pagamento). O painel
+usa agregações e consultas de grupo limitadas a 1000 documentos. O custo de IA mostrado no painel é **estimativa**
+(US$ 0,15/0,60 por 1 M tokens de entrada/saída e US$ 0,04/h de voz), não a fatura.

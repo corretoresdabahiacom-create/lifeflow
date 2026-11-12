@@ -9,6 +9,8 @@ export interface AuthContextValue {
   user: SessionUser | null;
   /** true enquanto o SDK ainda restaura a sessão. */
   loading: boolean;
+  /** true quando o token traz a claim `admin` (só define o que o painel mostra; o servidor sempre confere de novo). */
+  isAdmin: boolean;
   /** false quando as variáveis do Firebase não foram configuradas. */
   configured: boolean;
   signIn: (email: string, password: string) => Promise<void>;

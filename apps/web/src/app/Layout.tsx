@@ -10,13 +10,16 @@ const NAV = [
   { to: "/financas", label: "Finanças", icon: <WalletIcon />, end: false },
   { to: "/agenda", label: "Agenda", icon: <CalendarIcon />, end: false },
   { to: "/assistente", label: "Assistente", icon: <SparkIcon />, end: false },
+  { to: "/assinatura", label: "Assinatura", icon: <WalletIcon />, end: false },
   { to: "/ajustes", label: "Ajustes", icon: <SettingsIcon />, end: false },
 ];
 
 function NavItems() {
+  const { isAdmin } = useAuth();
+  const items = isAdmin ? [...NAV, { to: "/admin", label: "Admin", icon: <SettingsIcon />, end: false }] : NAV;
   return (
     <>
-      {NAV.map((item) => (
+      {items.map((item) => (
         <NavLink
           key={item.to}
           to={item.to}

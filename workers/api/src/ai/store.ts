@@ -1,16 +1,13 @@
 import {
   DEFAULT_AI_SETTINGS,
-  DEFAULT_PLAN_AI_LIMITS,
-  PLAN_IDS,
   type AiActionStatus,
   type AiActionView,
   type AiSettings,
   type AiToolName,
   type AiUsageView,
-  type PlanId,
 } from "@lifeflow/shared";
 import { todayInTimeZone } from "@lifeflow/shared";
-import type { Env } from "../env";
+import { getEntitlements, type Entitlements } from "../billing/store";
 import type { DocData } from "../firestore";
 import { pathsFor, profileTimeZone, sha256Hex, type Ctx } from "../finance/common";
 
@@ -62,9 +59,9 @@ export async function writeLog(
 
 // ---- Plano e consumo ----
 
-export function resolvePlan(env: Env): PlanId {
-  const wanted = env.AI_DEFAULT_PLAN ?? "free";
-  return (PLAN_IDS as readonly string[]).includes(wanted) ? (wanted as PlanId) : "free";
+/** Plano efetivo e limites do usuário: vêm da assinatura e da configuração comercial gravadas no banco. */
+export function resolveEntitlements(ctx: Ctx): Promise<Entitlements> {
+  return getEntitlements(ctx.db, ctx.uid, ctx.now());
 }
 
 export async function monthKey(ctx: Ctx): Promise<{ month: string; today: string; timeZone: string }> {
@@ -73,11 +70,10 @@ export async function monthKey(ctx: Ctx): Promise<{ month: string; today: string
   return { month: today.slice(0, 7), today, timeZone };
 }
 
-export async function readUsage(ctx: Ctx, env: Env): Promise<AiUsageView> {
+export async function readUsage(ctx: Ctx): Promise<AiUsageView> {
   const { month } = await monthKey(ctx);
   const doc = await ctx.db.get(pathsFor(ctx.uid).aiUsage(month));
-  const plan = resolvePlan(env);
-  const limits = DEFAULT_PLAN_AI_LIMITS[plan];
+  const { plan, config: limits } = await resolveEntitlements(ctx);
   return {
     month,
     messages: Number(doc?.["messages"] ?? 0),

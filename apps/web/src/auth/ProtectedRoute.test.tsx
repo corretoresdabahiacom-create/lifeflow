@@ -8,6 +8,7 @@ const base: AuthContextValue = {
   user: null,
   loading: false,
   configured: true,
+  isAdmin: false,
   signIn: async () => undefined,
   signUp: async () => undefined,
   signOut: async () => undefined,

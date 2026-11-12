@@ -19,7 +19,7 @@ O checklist manual no navegador **não foi executado**. Decisões: `DECISIONS.md
 | Confirmação antes de gravar; confirmação reforçada acima do limite do usuário | `ai/engine.ts`, `routes.ts`, `ActionCard.tsx` | Implementado e testado |
 | Limites de automação do usuário (ações/dia, valor/dia, confirmação reforçada) | `AiSettingsSchema`, `PUT /v1/ai/settings`, `AssistantSettings.tsx` | Implementado e testado |
 | Auditoria de ações da IA (trilha só de inclusão) e histórico na tela | coleção `aiLogs`, `GET /v1/ai/history` | Implementado e testado |
-| Controle de consumo por plano (mensagens e minutos de voz) | `ai/store.ts`, `GET /v1/ai/usage` | Implementado e testado (plano vem de `AI_DEFAULT_PLAN` até a Fase 5) |
+| Controle de consumo por plano (mensagens e minutos de voz) | `ai/store.ts`, `GET /v1/ai/usage` | Implementado e testado (a partir da Fase 5 o plano vem da assinatura do usuário) |
 | Voz com consentimento explícito, sem guardar o áudio | `POST /v1/ai/transcribe`, `VoiceButton.tsx` | Implementado e testado com STT simulado |
 | Origem "IA" nos lançamentos | campo `origin`/`aiActionId`, selo "IA" em `TransactionsPage.tsx` | Implementado e testado |
 | Regras do Firestore das novas coleções | `firebase/firestore.rules`, `firebase/tests/ai.rules.test.ts` | Escritas; **só rodam na CI** |
@@ -101,7 +101,7 @@ a intenção era negar). Corrigi a regra para `false`. Execução seguinte (`431
 
 ## Como ligar de verdade (quando houver chaves)
 
-`wrangler secret put DEEPSEEK_API_KEY` e `GROQ_API_KEY`; opcionais `LLM_MODEL`, `STT_MODEL`, `AI_DEFAULT_PLAN`
+`wrangler secret put DEEPSEEK_API_KEY` e `GROQ_API_KEY`; opcionais `LLM_MODEL`, `STT_MODEL`
 (ver `ENVIRONMENT.md`). Sem chaves o assistente responde `503 ai_not_configured` (mensagem clara na tela).
 
 ## Limites e pendências (honestos)
@@ -111,7 +111,7 @@ a intenção era negar). Corrigi a regra para `false`. Execução seguinte (`431
   O modelo `deepseek-flash` foi confirmado na documentação em 2026-11-11.
 - **Qualidade do modelo não avaliada:** os testes usam um modelo simulado, então provam o backend e suas travas,
   não que o DeepSeek escolhe a ferramenta certa. Recomenda-se uma bateria de frases reais antes do lançamento.
-- **Plano ainda vem de `AI_DEFAULT_PLAN`** (global). Planos por usuário e cobrança chegam na Fase 5.
+- **Plano por usuário** passou a vir da assinatura na Fase 5 (`AI_DEFAULT_PLAN` foi removida); ver `PHASE_05_SAAS.md`.
 - **Cota lê e depois incrementa:** sob requisições simultâneas pode haver pequeno excesso do limite mensal.
 - **Queda entre executar e marcar a ação:** raro; para operações sem idempotência natural (estorno, baixa) a ação
   pode aparecer como "falhou" na repetição, mas o dado não é duplicado (as rotas internas são idempotentes/estado).

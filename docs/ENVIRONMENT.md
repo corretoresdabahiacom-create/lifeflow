@@ -18,10 +18,9 @@ APIs pagas só com configuração explícita e autorização.
 | `VITE_API_BASE_URL` | Frontend | URL do Worker | Não |
 | `VITE_USE_EMULATORS` | Frontend | `true` para usar emuladores locais | Não |
 
-## Variáveis futuras (fase 5)
+## Variáveis futuras
 
-`EMAIL_*`, `PAYMENT_*`, `VAPID_*`:
-secrets do Worker, definidos quando cada adaptador for implementado.
+`EMAIL_*`, `VAPID_*`: secrets do Worker, definidos quando cada adaptador for implementado.
 
 ## Desenvolvimento local
 
@@ -36,7 +35,20 @@ Os passos estão em `PHASE_01_FOUNDATION.md`.
 | `GROQ_API_KEY` | **secret** | — | Chave da transcrição |
 | `LLM_PROVIDER` / `LLM_MODEL` / `LLM_BASE_URL` | var | `deepseek` / `deepseek-flash` / `https://api.deepseek.com` | Provedor do LLM |
 | `STT_PROVIDER` / `STT_MODEL` / `STT_BASE_URL` | var | `groq` / `whisper-large-v3-turbo` / `https://api.groq.com/openai/v1` | Transcrição |
-| `AI_DEFAULT_PLAN` | var | `free` | Plano aplicado a todos até a Fase 5 (`free`, `pro`, `premium_ai`) |
 
 Definir secrets com `wrangler secret put NOME`; nunca no Git. As variáveis `LLM_API_KEY` e `STT_*` previstas antes
 foram substituídas por estas.
+
+## Variáveis de SaaS (Fase 5)
+
+| Variável | Tipo | Descrição |
+|---|---|---|
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | **secret** | Conta de serviço do Firebase (caminho privilegiado restrito: webhook e painel). Sem ela e sem `FIRESTORE_BASE_URL`: `503 billing_not_configured` |
+| `MERCADOPAGO_ACCESS_TOKEN` | **secret** | Token do Mercado Pago. Ausente → `503 billing_not_configured` |
+| `MERCADOPAGO_WEBHOOK_SECRET` | **secret** | Segredo da assinatura do webhook. Ausente → webhooks recusados |
+| `PAYMENT_PROVIDER` | var | `mercadopago` (único implementado) |
+| `MERCADOPAGO_BASE_URL` | var, opcional | Padrão `https://api.mercadopago.com` (testes) |
+| `WEB_BASE_URL` | var | URL do app (retorno do checkout: `/assinatura?retorno=1`) |
+| `API_PUBLIC_URL` | var | URL pública do Worker (notificação: `/webhooks/mercadopago`) |
+
+`AI_DEFAULT_PLAN` foi **removida**: o plano vem da assinatura. A claim `admin` é definida no Firebase Auth, não aqui.

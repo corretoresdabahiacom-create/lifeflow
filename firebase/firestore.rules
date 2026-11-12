@@ -643,6 +643,13 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      // Histórico de pagamentos da assinatura: somente leitura para o dono (gravado pelo webhook, no backend).
+      match /billingPayments/{paymentId} {
+        allow get: if isOwner(uid);
+        allow list: if isOwner(uid);
+        allow write: if false;
+      }
+
       // Consumo mensal e automação diária: contadores que só crescem.
       match /aiUsage/{docId} {
         function validUsage() {
@@ -687,6 +694,19 @@ service cloud.firestore {
         allow delete: if false;
       }
     }
+
+    // ---- Planos, assinaturas e cobrança (Fase 5) ----
+    // Somente o backend (conta de serviço, que ignora estas regras) escreve. O cliente só LÊ o que é dele.
+    match /plans/{planId} {
+      allow get, list: if signedIn();
+      allow write: if false;
+    }
+    match /subscriptions/{uid} {
+      allow get: if isOwner(uid);
+      allow list: if false;
+      allow write: if false;
+    }
+    // `webhookEvents` e `adminLogs` não têm regra própria: caem na negação padrão (só o backend acessa).
 
     // Tudo o que não foi liberado acima é negado.
     match /{document=**} {

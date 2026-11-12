@@ -58,7 +58,7 @@ Todas as coleções pessoais ficam sob `users/{uid}`; a regra de propriedade é 
 | Notificações da agenda | Geradas sob demanda pelo app aberto; sem agendador |
 | DeepSeek (LLM) | Não implementado |
 | Groq (transcrição) | Não implementado |
-| Mercado Pago | Não implementado |
+| Mercado Pago | Adaptador implementado (Fase 5); **nunca testado contra o serviço real** |
 | Resend (e-mail) | Não implementado |
 | Web Push (VAPID) | Não implementado |
 | Cloudflare (deploy) | Não implementado (somente configuração local do Worker) |
@@ -76,3 +76,13 @@ Navegador ── POST /v1/ai/transcribe (áudio) ─► Worker ─► SpeechToTe
 
 Código: `workers/api/src/ai/` (`providers/`, `tools.ts`, `engine.ts`, `store.ts`, `routes.ts`); front:
 `apps/web/src/pages/assistant/`. Integrações: DeepSeek e Groq implementadas, **não testadas contra as APIs reais**.
+
+## SaaS (Fase 5)
+
+```
+Navegador ── /v1/billing/* (token do usuário; regras valem) ──► Worker ──► PaymentProvider (Mercado Pago)
+Mercado Pago ── POST /webhooks/mercadopago (HMAC) ─► Worker ─► relê o estado no provedor ─► SystemDb (conta de serviço, lista fechada)
+Admin (claim) ── /v1/admin/* ─► Worker ─► SystemDb: planos, assinaturas, logs, agregados de consumo (sem conteúdo dos clientes)
+```
+
+Código: `workers/api/src/billing/`, `admin/`, `system.ts`; front: `apps/web/src/pages/billing/`, `pages/admin/`.

@@ -162,7 +162,24 @@ Problema, Alternativas, Justificativa, Impacto, Aprovação.
   ações/dia e valor/dia; acima de `confirmAboveCents` a confirmação é reforçada; estorno, baixa, edição e exclusão
   sempre confirmam.
 - **Consumo por plano** com contadores atômicos (`aiUsage/{AAAA-MM}`, `aiDaily/{AAAA-MM-DD}`); plano temporário
-  por `AI_DEFAULT_PLAN` até a Fase 5. Falha do provedor não consome.
+  por plano (na Fase 4 vinha de `AI_DEFAULT_PLAN`; desde a Fase 5, da assinatura). Falha do provedor não consome.
 - **Voz:** consentimento explícito; áudio cru no corpo, duração no cabeçalho, nada gravado; cobrança mínima de 10 s.
 - **Lembretes** ganharam `PATCH` (título e horário) para `update_reminder`; novo horário gera nova notificação.
 - **Premissas não verificadas:** comportamento real das APIs DeepSeek/Groq; preços (ver `COSTS.md`).
+
+## D-009 — SaaS: planos, cobrança e administração (Fase 5)
+
+- **Provedor de pagamento atrás de interface** (`PaymentProvider`); Mercado Pago (assinaturas "preapproval") como
+  implementação. Testes com provedor simulado; o adaptador nunca foi executado contra o serviço real.
+- **O webhook nunca é confiável por si só:** assinatura HMAC conferida, depois o estado é **relido no provedor**; o
+  resultado é idempotente (eventos deduplicados, pagamentos com id determinístico, estado como função pura).
+- **Escrita de cobrança só pelo backend.** O cliente não escreve plano, assinatura nem pagamento (regras: `write: false`).
+  Alternativa descartada: gravar a assinatura pelo cliente depois do checkout — forjável.
+- **Caminho privilegiado restrito (`SystemDb`):** conta de serviço (`GOOGLE_SERVICE_ACCOUNT_JSON`) com lista fechada de
+  caminhos e consultas agregadas. Alternativa descartada: dar ao admin as mesmas permissões de um usuário ou ler
+  `users/*` — quebraria a promessa de que o administrador não vê dados financeiros dos clientes.
+- **Admin = claim `admin` verificada no servidor**, toda ação auditada em `adminLogs` (falha de auditoria nega a escrita).
+- **Plano efetivo derivado, não armazenado:** evita plano "preso" depois de cancelamento/inadimplência; carência de 3 dias.
+- **Upgrade imediato, downgrade na renovação;** preço novo vale na próxima cobrança (sem cobrança proporcional).
+- **Preços e limites configuráveis** em `plans/{id}` (padrões do contrato no código); Free não pode ter preço nem ser desativado.
+- **Premissas não verificadas:** manifesto do webhook, `free_trial`, índices de grupo no Firestore real.

@@ -69,3 +69,10 @@ O LLM e a transcrição são **simulados** (`ScriptedLLM`, `ScriptedSTT`): segue
 obedece uma injeção de prompt. `ai.providers.test.ts` testa os adaptadores DeepSeek/Groq com `fetch` simulado
 (formato do pedido, mapeamento de erros, timeout). `firebase/tests/ai.rules.test.ts` cobre as regras (só CI).
 Nada disso exercita as APIs reais.
+
+## Estado (Fase 5) — SaaS
+
+`pnpm test` = shared 100 + web 82 + api 239 = 421 (local). Suíte `billing.suite.ts` (36) roda no Firestore falso e, na
+CI, no emulador real com as regras reais; `mercadopago.test.ts` (HMAC real, `fetch` simulado), `system.test.ts` (JWT
+RS256 real, endpoint simulado), `BillingPage`/`AdminPage` (componentes), `firebase/tests/billing.rules.test.ts` (CI).
+O provedor de pagamento nos testes é `FakePayments`. **Nada exercita o Mercado Pago real nem um navegador real.**

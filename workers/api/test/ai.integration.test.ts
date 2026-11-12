@@ -1,6 +1,6 @@
 import { defineAiSuite, ScriptedLLM, ScriptedSTT, type AiWorld, type AiWorldOptions } from "./ai.suite";
 import { Client, tokensFor } from "./finance.suite";
-import { makeApp, type Clock, type Signer } from "./helpers";
+import { grantPlan, makeApp, uidOfToken, type Clock, type Signer } from "./helpers";
 
 /**
  * Mesma suíte do assistente contra o EMULADOR REAL do Firestore, com as Security Rules reais.
@@ -18,11 +18,12 @@ async function emulatorWorld(signer: Signer, options: AiWorldOptions): Promise<A
   const app = makeApp(
     signer,
     fetch,
-    { FIRESTORE_BASE_URL: `http://${host}`, AI_DEFAULT_PLAN: options.plan ?? "free" },
+    { FIRESTORE_BASE_URL: `http://${host}` },
     clock,
     { ...(options.noLlm ? {} : { llm }), stt },
   );
   const { a, b } = await tokensFor(signer);
+  if (options.plan) await grantPlan(fetch, `http://${host}`, uidOfToken(a), options.plan);
   return { clock, llm, stt, A: new Client(app, a), B: new Client(app, b) };
 }
 

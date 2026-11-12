@@ -1,4 +1,9 @@
 import type {
+  PaidPlanId,
+  PaymentView,
+  PlanConfig,
+  PlanConfigInput,
+  SubscriptionView,
   Account,
   AiActionView,
   AiChatReply,
@@ -58,6 +63,37 @@ export interface ApiClientOptions {
   /** Devolve o ID token vigente. `forceRefresh` pede ao SDK que renove a sessão. */
   getToken: (forceRefresh: boolean) => Promise<string>;
   fetchImpl?: typeof fetch;
+}
+
+export interface AdminOverview {
+  generatedAt: string;
+  users: { total: number };
+  activity: { aiActiveUsersThisMonth: number };
+  subscriptions: { byStatus: Record<string, number>; activeByPlan: Record<string, number>; mrrCents: number; canceledLast30d: number; truncated: boolean };
+  ai: { activeUsers: number; messages: number; voiceSeconds: number; inputTokens: number; outputTokens: number; estimatedCostUsd: number; costNote: string; truncated: boolean };
+  errors: { aiProviderErrorsThisMonth: number; failedWebhooks: number };
+  notifications: { available: boolean; note: string };
+}
+export interface AdminSubscription {
+  uid: string;
+  planId: string;
+  pendingPlanId: string | null;
+  status: string;
+  priceCents: number;
+  currentPeriodEnd: string | null;
+  graceUntil: string | null;
+  cancelAtPeriodEnd: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface AdminLogEntry {
+  id: string;
+  [key: string]: unknown;
+}
+export interface AdminIntegration {
+  name: string;
+  configured: boolean;
+  [key: string]: unknown;
 }
 
 export type StoredPreferences = Preferences & { stored: boolean };
@@ -359,6 +395,29 @@ export function createApiClient(options: ApiClientOptions) {
         body: audio,
         headers: { "Content-Type": audio.type || "audio/webm", "X-Audio-Seconds": String(Math.max(1, Math.ceil(seconds))) },
       }),
+
+    // ---- Planos, assinatura e pagamentos (Fase 5) ----
+    billingPlans: () => request<{ plans: PlanConfig[]; current: string }>("/v1/billing/plans"),
+    billingSubscription: () => request<{ subscription: SubscriptionView; limits: PlanConfig }>("/v1/billing/subscription"),
+    billingHistory: () => request<{ payments: PaymentView[] }>("/v1/billing/history"),
+    billingCheckout: (planId: PaidPlanId, key: string) =>
+      request<{ subscription: SubscriptionView; checkoutUrl: string | null }>("/v1/billing/checkout", post({ planId }, key)),
+    billingChange: (planId: PaidPlanId) =>
+      request<{ subscription: SubscriptionView; effective?: "now" | "next_renewal" }>("/v1/billing/change", post({ planId })),
+    billingCancel: () => request<{ subscription: SubscriptionView; message?: string }>("/v1/billing/cancel", post({})),
+    billingSync: () => request<{ subscription: SubscriptionView }>("/v1/billing/sync", post({})),
+
+    // ---- Painel administrativo (exige a claim `admin`) ----
+    adminOverview: () => request<AdminOverview>("/v1/admin/overview"),
+    adminPlans: () => request<{ plans: PlanConfig[] }>("/v1/admin/plans"),
+    adminPutPlan: (id: string, input: PlanConfigInput) => request<{ plan: PlanConfig }>(`/v1/admin/plans/${id}`, put(input)),
+    adminSubscriptions: (query: { plan?: string; status?: string }) =>
+      request<{ subscriptions: AdminSubscription[] }>(withQuery("/v1/admin/subscriptions", { plan: query.plan ?? null, status: query.status ?? null })),
+    adminSubscription: (uid: string) =>
+      request<{ subscription: AdminSubscription; payments: PaymentView[] }>(`/v1/admin/subscriptions/${encodeURIComponent(uid)}`),
+    adminUsage: (month?: string) => request<Record<string, unknown>>(withQuery("/v1/admin/usage", { month: month ?? null })),
+    adminLogs: (kind: "admin" | "webhooks") => request<{ kind: string; logs: AdminLogEntry[] }>(withQuery("/v1/admin/logs", { kind })),
+    adminIntegrations: () => request<{ integrations: AdminIntegration[]; note: string }>("/v1/admin/integrations"),
   };
 }
 

@@ -2,6 +2,15 @@
 
 ## [Não lançado]
 
+### Fase 5 — SaaS (2026-11-12)
+- Planos Free/Pro/Premium AI configuráveis; assinatura (checkout, troca, cancelamento, sincronização), pagamentos e
+  histórico; **limites de IA agora vêm da assinatura** (`AI_DEFAULT_PLAN` removida).
+- Webhook do Mercado Pago com HMAC, releitura do estado no provedor e idempotência; carência de 3 dias na inadimplência.
+- Caminho privilegiado restrito (conta de serviço) e painel administrativo (indicadores, planos, assinaturas, consumo,
+  logs, integrações) com claim `admin` e auditoria; o admin não acessa conteúdo financeiro dos clientes.
+- Telas `/assinatura` e `/admin`; regras do Firestore e índices de grupo.
+- **Mercado Pago nunca foi chamado de verdade**; regras/emulador só na CI. Testes: `pnpm test` = 421. D-009.
+
 ### Fase 4 — Assistente de IA (2026-11-12)
 - Chat com 23 ferramentas (contas, saldo, lançamentos, resumo, contas a pagar, eventos, tarefas, lembretes); a IA só
   **propõe**, o usuário confirma; parâmetros congelados com hash; confirmação reforçada acima do limite do usuário.

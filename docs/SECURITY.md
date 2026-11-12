@@ -76,3 +76,19 @@ Não afirmar conformidade com a LGPD sem revisão jurídica e operacional.
   descrições, títulos). Isso precisa constar na política de privacidade; **não** há revisão jurídica.
 - **Limite conhecido:** o cliente tem o próprio token do Firestore, então um cliente malicioso poderia gravar
   diretamente os próprios documentos de IA dentro do que as regras permitem (afeta só o próprio usuário).
+
+## SaaS e administração (Fase 5)
+
+- **Plano/assinatura/pagamento só mudam pelo backend** (regras `write: false`); o cliente só lê o que é dele.
+- **Webhook:** HMAC-SHA256 em tempo constante; assinatura inválida → `401` sem tocar em nada; o estado é sempre
+  relido no provedor; deduplicação e idempotência; o webhook só altera a assinatura cujo `providerSubscriptionId` e
+  `externalReference` (uid) conferem.
+- **Caminho privilegiado restrito (`SystemDb`):** conta de serviço com lista fechada de caminhos (`plans`,
+  `subscriptions`, `webhookEvents`, `adminLogs`, `users/{uid}/billingPayments`) e consultas de grupo só de
+  `aiUsage`/`aiLogs` para agregação. Qualquer outro caminho lança `SystemAccessError` (testado, inclusive tentativas
+  em `transactions`/`accounts`). Rotas normais continuam usando só o token do usuário (regras valem).
+- **Admin:** claim `admin` do token verificado (cabeçalho, query e corpo não concedem nada); 403 para os demais; cada
+  chamada em `adminLogs`, com falha de auditoria negando escritas; respostas sem identificadores do provedor nem
+  conteúdo de usuários. Conceder a claim é passo manual do dono do projeto.
+- **Segredos:** token do Mercado Pago, segredo do webhook e conta de serviço só como secrets; o painel mostra apenas "configurado".
+- **Risco aceito:** a conta de serviço ignora as Security Rules; a proteção é o código do `SystemDb`, coberto por testes.

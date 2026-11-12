@@ -20,6 +20,20 @@ export interface Env {
   STT_BASE_URL?: string;
   /** SECRET (nunca no Git): `wrangler secret put GROQ_API_KEY`. */
   GROQ_API_KEY?: string;
-  /** Plano aplicado até a Fase 5 (assinaturas): `free` (padrão), `pro` ou `premium_ai`. */
-  AI_DEFAULT_PLAN?: string;
+  /** Provedor de pagamentos (padrão `mercadopago`). */
+  PAYMENT_PROVIDER?: string;
+  MERCADOPAGO_BASE_URL?: string;
+  /** SECRET: token de acesso do Mercado Pago (`wrangler secret put MERCADOPAGO_ACCESS_TOKEN`). */
+  MERCADOPAGO_ACCESS_TOKEN?: string;
+  /** SECRET: "assinatura secreta" dos webhooks (painel do Mercado Pago > Webhooks). */
+  MERCADOPAGO_WEBHOOK_SECRET?: string;
+  /** URL pública do app web (retorno do checkout), ex.: https://app.exemplo.com */
+  WEB_BASE_URL?: string;
+  /** URL pública deste Worker (o provedor chama `${API_PUBLIC_URL}/webhooks/mercadopago`). */
+  API_PUBLIC_URL?: string;
+  /**
+   * SECRET: JSON da conta de serviço do Firebase. Usada SOMENTE pelo caminho privilegiado restrito
+   * (webhooks, assinaturas, painel administrativo). Nunca vai ao navegador.
+   */
+  GOOGLE_SERVICE_ACCOUNT_JSON?: string;
 }

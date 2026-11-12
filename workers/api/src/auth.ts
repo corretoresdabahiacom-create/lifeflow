@@ -9,6 +9,8 @@ export const DEFAULT_JWKS_URL =
 export interface AuthenticatedUser {
   uid: string;
   email?: string;
+  /** Claim `admin: true` do ID token (definida só por quem administra o projeto Firebase). */
+  admin?: boolean;
 }
 
 export type KeyResolver = JWTVerifyGetKey;
@@ -62,7 +64,8 @@ export async function verifyFirebaseToken(
     }
 
     const email = typeof payload["email"] === "string" ? payload["email"] : undefined;
-    return email ? { uid, email } : { uid };
+    const admin = payload["admin"] === true;
+    return { uid, ...(email ? { email } : {}), ...(admin ? { admin } : {}) };
   } catch (error) {
     if (error instanceof HttpError) throw error;
     if (error instanceof joseErrors.JWTExpired) throw unauthorized("Token expirado");

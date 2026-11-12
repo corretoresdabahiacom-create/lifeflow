@@ -7,7 +7,6 @@ import {
   AiConsentSchema,
   AiSettingsSchema,
   DEFAULT_AI_SETTINGS,
-  DEFAULT_PLAN_AI_LIMITS,
   type AiMessageView,
 } from "@lifeflow/shared";
 import { HttpError } from "../errors";
@@ -16,7 +15,7 @@ import { assertId, pathsFor, type Ctx } from "../finance/common";
 import { chat, executeAction, rejectAction, type AiDeps } from "./engine";
 import { AUDIO_MIME_EXTENSIONS } from "./providers/groq";
 import { createSpeechProvider, ProviderError } from "./providers";
-import { actionView, addUsage, readDaily, readSettings, readUsage, resolvePlan, writeLog } from "./store";
+import { actionView, addUsage, readDaily, readSettings, readUsage, resolveEntitlements, writeLog } from "./store";
 
 const KEY_RE = /^[A-Za-z0-9_\-:.]{8,128}$/;
 
@@ -151,7 +150,7 @@ export async function handleAi(ctx: Ctx, deps: AiDeps): Promise<Response | null>
     case "usage": {
       allow(method, ["GET"]);
       const { daily } = await readDaily(ctx);
-      return json({ usage: await readUsage(ctx, deps.env), autoToday: daily });
+      return json({ usage: await readUsage(ctx), autoToday: daily });
     }
 
     case "settings": {
@@ -194,8 +193,8 @@ async function transcribe(ctx: Ctx, deps: AiDeps): Promise<Response> {
   if (consent?.["granted"] !== true) {
     throw new HttpError(403, "audio_consent_required", "Autorize o uso do microfone e o envio do áudio para transcrição antes de usar a voz");
   }
-  const plan = resolvePlan(deps.env);
-  if (DEFAULT_PLAN_AI_LIMITS[plan].voiceMinutesPerMonth <= 0) {
+  const { config: planConfig } = await resolveEntitlements(ctx);
+  if (planConfig.voiceMinutesPerMonth <= 0) {
     throw new HttpError(403, "voice_not_in_plan", "A transcrição por voz não está disponível no seu plano");
   }
 
@@ -213,7 +212,7 @@ async function transcribe(ctx: Ctx, deps: AiDeps): Promise<Response> {
   if (audio.byteLength > AI_AUDIO_MAX_BYTES) throw new HttpError(413, "audio_too_large", "O áudio é grande demais");
 
   const billed = Math.max(AI_AUDIO_MIN_BILLED_SECONDS, Math.ceil(seconds));
-  const usage = await readUsage(ctx, deps.env);
+  const usage = await readUsage(ctx);
   if (usage.voiceSeconds + billed > usage.voiceSecondsLimit) {
     throw new HttpError(429, "ai_voice_limit_reached", "Você atingiu o limite mensal de transcrição por voz do seu plano");
   }

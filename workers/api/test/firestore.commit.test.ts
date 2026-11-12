@@ -129,6 +129,6 @@ describe("FirestoreClient.query", () => {
         ),
     );
     const docs = await db.query("users/u1", { collection: "accounts", limit: 10 });
-    expect(docs).toEqual([{ id: "a9", data: { balanceCents: -250, name: "X" }, updateTime: "2026-01-01T00:00:00Z" }]);
+    expect(docs).toEqual([{ id: "a9", path: "users/u1/accounts/a9", data: { balanceCents: -250, name: "X" }, updateTime: "2026-01-01T00:00:00Z" }]);
   });
 });
