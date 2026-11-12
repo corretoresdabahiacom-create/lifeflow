@@ -2,6 +2,16 @@
 
 ## [Não lançado]
 
+### Fase 4 — Assistente de IA (2026-11-12)
+- Chat com 23 ferramentas (contas, saldo, lançamentos, resumo, contas a pagar, eventos, tarefas, lembretes); a IA só
+  **propõe**, o usuário confirma; parâmetros congelados com hash; confirmação reforçada acima do limite do usuário.
+- Adaptadores DeepSeek (`deepseek-flash`) e Groq (`whisper-large-v3-turbo`) atrás de interfaces; **sem teste contra as APIs reais**.
+- Prompt injection: saída de ferramentas tratada como dado não confiável; estorno/baixa/edição/exclusão sempre confirmam.
+- Auditoria (`aiLogs`), consumo por plano (30 mensagens e sem voz no gratuito), automação com limites, voz com consentimento.
+- Lançamentos com origem `manual`/`ai` (selo "IA"); `PATCH /v1/reminders/{id}`.
+- Testes: `pnpm test` = 354 (shared 97, web 70, api 187); regras e emulador na CI.
+- Decisão D-008. Limites em `PHASE_04_AI.md`.
+
 ### Fase 3 — Agenda (2026-11-10)
 - Calendário (dia/semana/mês/lista), eventos com fuso IANA, recorrências (diária, semanal, mensal, anual,
   personalizada), edição de uma ocorrência / esta e as próximas / toda a série, detecção de conflitos (só avisa).

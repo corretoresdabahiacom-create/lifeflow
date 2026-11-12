@@ -96,12 +96,43 @@ service cloud.firestore {
             && d.updatedAt is string;
         }
 
+        // Limites de automação do assistente (Fase 4): documento "ai".
+        function validAiSettings() {
+          let d = request.resource.data;
+          return key == 'ai'
+            && d.keys().hasOnly(['uid', 'autoActionsPerDay', 'autoValueLimitCents', 'confirmAboveCents', 'updatedAt'])
+            && d.keys().hasAll(['uid', 'autoActionsPerDay', 'autoValueLimitCents', 'confirmAboveCents', 'updatedAt'])
+            && d.uid == uid
+            && d.autoActionsPerDay is int && d.autoActionsPerDay >= 0 && d.autoActionsPerDay <= 100
+            && d.autoValueLimitCents is int && d.autoValueLimitCents >= 0 && d.autoValueLimitCents <= 10000000
+            && d.confirmAboveCents is int && d.confirmAboveCents >= 0 && d.confirmAboveCents <= 10000000
+            && d.updatedAt is string;
+        }
+
         allow get: if isOwner(uid);
         allow list: if isOwner(uid);
-        allow create: if isOwner(uid) && validPreferences();
+        allow create: if isOwner(uid) && (validPreferences() || validAiSettings());
         allow update: if isOwner(uid)
-          && validPreferences()
+          && (validPreferences() || validAiSettings())
           && request.resource.data.uid == resource.data.uid;
+        allow delete: if isOwner(uid);
+      }
+
+      // ---- Consentimentos: users/{uid}/consents/audio (envio de áudio para transcrição) ----
+      match /consents/{key} {
+        function validConsent() {
+          let d = request.resource.data;
+          return key == 'audio'
+            && d.keys().hasOnly(['uid', 'granted', 'updatedAt'])
+            && d.keys().hasAll(['uid', 'granted', 'updatedAt'])
+            && d.uid == uid
+            && d.granted is bool
+            && d.updatedAt is string;
+        }
+        allow get: if isOwner(uid);
+        allow list: if isOwner(uid);
+        allow create: if isOwner(uid) && validConsent();
+        allow update: if isOwner(uid) && validConsent() && request.resource.data.uid == resource.data.uid;
         allow delete: if isOwner(uid);
       }
 
@@ -168,8 +199,11 @@ service cloud.firestore {
       match /transactions/{docId} {
         function validTransaction() {
           let d = request.resource.data;
-          return d.keys().hasOnly(['uid', 'accountId', 'type', 'amountCents', 'signedCents', 'date', 'categoryId', 'description', 'notes', 'status', 'transferId', 'payableId', 'createdAt', 'updatedAt', 'voidedAt', 'requestHash'])
+          return d.keys().hasOnly(['uid', 'accountId', 'type', 'amountCents', 'signedCents', 'date', 'categoryId', 'description', 'notes', 'status', 'transferId', 'payableId', 'createdAt', 'updatedAt', 'voidedAt', 'requestHash', 'origin', 'aiActionId'])
             && d.keys().hasAll(['uid', 'accountId', 'type', 'amountCents', 'signedCents', 'date', 'categoryId', 'description', 'notes', 'status', 'transferId', 'payableId', 'createdAt', 'updatedAt', 'voidedAt', 'requestHash'])
+            // Origem (manual/ia): opcional por compatibilidade; imutável após a criação (ver `update` abaixo).
+            && (!('origin' in d) || d.origin in ['manual', 'ai'])
+            && (!('aiActionId' in d) || isNullOrDocId(d.aiActionId))
             && isDocId(docId)
             && d.uid == uid
             && isDocId(d.accountId)
@@ -470,7 +504,8 @@ service cloud.firestore {
         allow get: if isOwner(uid);
         allow list: if isOwner(uid);
         allow create: if isOwner(uid) && validReminder();
-        allow update: if false;
+        // Só título e horário mudam (o novo horário gera um novo aviso, pois a chave do aviso inclui `remindAt`).
+        allow update: if isOwner(uid) && validReminder() && changedKeys().hasOnly(['title', 'remindAt']);
         allow delete: if isOwner(uid);
       }
 
@@ -507,6 +542,148 @@ service cloud.firestore {
           && changedKeys().hasOnly(['read', 'readAt', 'dismissed'])
           && (resource.data.read == false || request.resource.data.read == true)
           && (resource.data.dismissed == false || request.resource.data.dismissed == true);
+        allow delete: if false;
+      }
+
+      // ---- Assistente de IA (Fase 4) ----
+      // Conversas e mensagens (texto). Mensagens são imutáveis; a conversa só avança `updatedAt`.
+      match /aiConversations/{docId} {
+        function validConversation() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['uid', 'title', 'createdAt', 'updatedAt'])
+            && d.keys().hasAll(['uid', 'title', 'createdAt', 'updatedAt'])
+            && isDocId(docId)
+            && d.uid == uid
+            && isText(d.title, 60)
+            && d.createdAt is string
+            && d.updatedAt is string;
+        }
+        allow get: if isOwner(uid);
+        allow list: if isOwner(uid);
+        allow create: if isOwner(uid) && validConversation();
+        allow update: if isOwner(uid) && validConversation() && changedKeys().hasOnly(['updatedAt']);
+        allow delete: if isOwner(uid);
+
+        match /messages/{messageId} {
+          function validMessage() {
+            let d = request.resource.data;
+            return d.keys().hasOnly(['uid', 'conversationId', 'role', 'content', 'createdAt'])
+              && d.keys().hasAll(['uid', 'conversationId', 'role', 'content', 'createdAt'])
+              && isDocId(messageId)
+              && d.uid == uid
+              && d.conversationId == docId
+              && d.role in ['user', 'assistant']
+              && isText(d.content, 4000)
+              && d.createdAt is string;
+          }
+          allow get: if isOwner(uid);
+          allow list: if isOwner(uid);
+          allow create: if isOwner(uid) && validMessage();
+          allow update: if false;
+          allow delete: if isOwner(uid);
+        }
+      }
+
+      // Ações propostas pela IA: nascem "pending"; só o estado e o resultado evoluem (nunca os parâmetros).
+      match /aiActions/{docId} {
+        function validAction() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['uid', 'conversationId', 'messageId', 'tool', 'kind', 'financial', 'argsJson', 'argsHash', 'summary', 'amountCents', 'reinforced', 'status', 'resultNote', 'expiresAt', 'createdAt', 'updatedAt'])
+            && d.keys().hasAll(['uid', 'conversationId', 'messageId', 'tool', 'kind', 'financial', 'argsJson', 'argsHash', 'summary', 'amountCents', 'reinforced', 'status', 'resultNote', 'expiresAt', 'createdAt', 'updatedAt'])
+            && isDocId(docId)
+            && d.uid == uid
+            && isDocId(d.conversationId)
+            && isDocId(d.messageId)
+            && isText(d.tool, 40)
+            && d.kind in ['create', 'update', 'delete']
+            && d.financial is bool
+            && d.argsJson is string && d.argsJson.size() <= 4500
+            && d.argsHash is string && d.argsHash.size() == 64
+            && isText(d.summary, 500)
+            && (d.amountCents == null || isPositiveCents(d.amountCents))
+            && d.reinforced is bool
+            && d.status in ['pending', 'executing', 'done', 'failed', 'blocked', 'expired', 'rejected']
+            && isNullOrText(d.resultNote, 300)
+            && d.expiresAt is string
+            && d.createdAt is string
+            && d.updatedAt is string;
+        }
+        allow get: if isOwner(uid);
+        allow list: if isOwner(uid);
+        allow create: if isOwner(uid) && validAction() && request.resource.data.status == 'pending'
+          && request.resource.data.resultNote == null;
+        // Estados terminais não mudam mais; parâmetros, ferramenta e resumo são imutáveis.
+        allow update: if isOwner(uid) && validAction()
+          && resource.data.status in ['pending', 'executing']
+          && changedKeys().hasOnly(['status', 'resultNote', 'updatedAt'])
+          && (resource.data.status == 'pending' || request.resource.data.status in ['done', 'failed', 'blocked']);
+        allow delete: if false;
+      }
+
+      // Trilha de auditoria: só cria; ninguém altera ou apaga.
+      match /aiLogs/{docId} {
+        function validLog() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['uid', 'event', 'tool', 'actionId', 'argsHash', 'detail', 'conversationId', 'createdAt'])
+            && d.keys().hasAll(['uid', 'event', 'tool', 'actionId', 'argsHash', 'detail', 'conversationId', 'createdAt'])
+            && isDocId(docId)
+            && d.uid == uid
+            && d.event in ['proposed', 'auto_executed', 'confirmed', 'executed', 'failed', 'rejected', 'blocked', 'expired', 'unauthorized_tool', 'invalid_args', 'provider_error']
+            && isNullOrText(d.tool, 60)
+            && isNullOrDocId(d.actionId)
+            && isNullOrText(d.argsHash, 64)
+            && d.detail is string && d.detail.size() <= 300
+            && isNullOrText(d.conversationId, 80)
+            && d.createdAt is string;
+        }
+        allow get: if isOwner(uid);
+        allow list: if isOwner(uid);
+        allow create: if isOwner(uid) && validLog();
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // Consumo mensal e automação diária: contadores que só crescem.
+      match /aiUsage/{docId} {
+        function validUsage() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['uid', 'messages', 'voiceSeconds', 'inputTokens', 'outputTokens', 'updatedAt'])
+            && docId.matches('^[0-9]{4}-[0-9]{2}$')
+            && d.uid == uid
+            && d.updatedAt is string
+            && (!('messages' in d) || (d.messages is int && d.messages >= 0))
+            && (!('voiceSeconds' in d) || (d.voiceSeconds is int && d.voiceSeconds >= 0))
+            && (!('inputTokens' in d) || (d.inputTokens is int && d.inputTokens >= 0))
+            && (!('outputTokens' in d) || (d.outputTokens is int && d.outputTokens >= 0));
+        }
+        function onlyGrows(field) {
+          return !(field in resource.data) || (field in request.resource.data && request.resource.data[field] >= resource.data[field]);
+        }
+        allow get: if isOwner(uid);
+        allow list: if isOwner(uid);
+        allow create: if isOwner(uid) && validUsage();
+        allow update: if isOwner(uid) && validUsage()
+          && onlyGrows('messages') && onlyGrows('voiceSeconds') && onlyGrows('inputTokens') && onlyGrows('outputTokens');
+        allow delete: if false;
+      }
+
+      match /aiDaily/{docId} {
+        function validDaily() {
+          let d = request.resource.data;
+          return d.keys().hasOnly(['uid', 'autoActions', 'autoValueCents', 'updatedAt'])
+            && isDateText(docId)
+            && d.uid == uid
+            && d.updatedAt is string
+            && (!('autoActions' in d) || (d.autoActions is int && d.autoActions >= 0))
+            && (!('autoValueCents' in d) || (d.autoValueCents is int && d.autoValueCents >= 0));
+        }
+        function dailyGrows(field) {
+          return !(field in resource.data) || (field in request.resource.data && request.resource.data[field] >= resource.data[field]);
+        }
+        allow get: if isOwner(uid);
+        allow list: if isOwner(uid);
+        allow create: if isOwner(uid) && validDaily();
+        allow update: if isOwner(uid) && validDaily() && dailyGrows('autoActions') && dailyGrows('autoValueCents');
         allow delete: if false;
       }
     }

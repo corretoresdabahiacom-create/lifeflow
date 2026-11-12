@@ -75,6 +75,22 @@ describe("createApiClient", () => {
     expect(JSON.parse(String(init.body))).toMatchObject({ amountCents: 1000 });
   });
 
+  it("IA: confirmação só envia 'reinforced' (nunca parâmetros) e a transcrição manda áudio cru com a duração", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ action: {}, text: "oi", billedSeconds: 10 }));
+    const api = createApiClient({ baseUrl: "https://api.test", getToken: async () => "t", fetchImpl });
+    await api.aiConfirm("act1", false);
+    await api.aiConfirm("act1", true);
+    const bodies = fetchImpl.mock.calls.map((c) => JSON.parse(String((c as unknown as [string, RequestInit])[1].body)));
+    expect(bodies).toEqual([{}, { reinforced: true }]);
+    await api.aiTranscribe(new Blob([new Uint8Array(4)], { type: "audio/webm" }), 4.2);
+    const [url, init] = fetchImpl.mock.calls[2] as unknown as [string, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(url).toBe("https://api.test/v1/ai/transcribe");
+    expect(headers.get("Content-Type")).toBe("audio/webm");
+    expect(headers.get("X-Audio-Seconds")).toBe("5");
+    expect(init.body).toBeInstanceOf(Blob);
+  });
+
   it("repetir após 401 reenvia a mesma Idempotency-Key", async () => {
     const fetchImpl = vi
       .fn()

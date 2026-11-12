@@ -779,3 +779,69 @@ h2 {
 .dot--danger {
   background: var(--danger);
 }
+
+/* ---- Assistente de IA (Fase 4) ---- */
+.badge--ai {
+  background: var(--surface-2);
+  color: var(--primary);
+}
+.ai,
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ai__bar {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.ai__select {
+  flex: 1 1 220px;
+}
+.ai__thread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 180px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.bubble {
+  align-self: flex-start;
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.bubble--user {
+  align-self: flex-end;
+  background: var(--primary);
+  color: var(--primary-contrast);
+}
+.ai-action__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.ai-action--reinforced {
+  border-color: var(--danger);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.voice {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 8px;
+}

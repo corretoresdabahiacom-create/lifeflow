@@ -1,5 +1,10 @@
 import type {
   Account,
+  AiActionView,
+  AiChatReply,
+  AiMessageView,
+  AiSettings,
+  AiUsageView,
   AppNotification,
   CalendarEvent,
   EventChanges,
@@ -155,6 +160,28 @@ export interface StandaloneReminder {
   remindAt: string;
 }
 
+export interface AiConversationSummary {
+  id: string;
+  title: string;
+  updatedAt: string;
+}
+
+export interface AiConversationDetail {
+  id: string;
+  title: string;
+  messages: AiMessageView[];
+  actions: AiActionView[];
+}
+
+export interface AiHistoryItem {
+  id: string;
+  event: string;
+  tool: string | null;
+  actionId: string | null;
+  detail: string;
+  createdAt: string;
+}
+
 type Query = Record<string, string | number | null | undefined>;
 
 function withQuery(path: string, query: Query = {}): string {
@@ -175,7 +202,7 @@ export function createApiClient(options: ApiClientOptions) {
       const token = await options.getToken(attempt > 0);
       const headers = new Headers(init.headers);
       headers.set("Authorization", `Bearer ${token}`);
-      if (init.body !== undefined) headers.set("Content-Type", "application/json");
+      if (init.body !== undefined && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
 
       const response = await doFetch(`${options.baseUrl}${path}`, { ...init, headers });
       if (response.status === 401 && attempt === 0) continue;
@@ -307,6 +334,31 @@ export function createApiClient(options: ApiClientOptions) {
     dismissNotification: (id: string) => request<AppNotification>(`/v1/notifications/${id}/dismiss`, post({})),
     readAllNotifications: () => request<{ updated: number; hasMore: boolean }>("/v1/notifications/read-all", post({})),
     createReminder: (input: ReminderCreateInput, key: string) => request<StandaloneReminder>("/v1/reminders", post(input, key)),
+
+    // ---- Assistente de IA (Fase 4) ----
+    aiChat: (message: string, conversationId: string | undefined, key: string) =>
+      request<AiChatReply>("/v1/ai/chat", post({ message, ...(conversationId ? { conversationId } : {}) }, key)),
+    aiListConversations: () => request<{ conversations: AiConversationSummary[] }>("/v1/ai/conversations"),
+    aiGetConversation: (id: string) => request<AiConversationDetail>(`/v1/ai/conversations/${id}`),
+    aiDeleteConversation: (id: string) => request<{ deleted: boolean }>(`/v1/ai/conversations/${id}`, { method: "DELETE" }),
+    aiPendingActions: () => request<{ actions: AiActionView[] }>("/v1/ai/actions"),
+    /** O corpo só diz se a confirmação é reforçada: os parâmetros da ação ficam congelados no servidor. */
+    aiConfirm: (id: string, reinforced: boolean) =>
+      request<{ action: AiActionView }>(`/v1/ai/actions/${id}/confirm`, post(reinforced ? { reinforced: true } : {})),
+    aiReject: (id: string) => request<{ action: AiActionView }>(`/v1/ai/actions/${id}/reject`, post({})),
+    aiHistory: () => request<{ history: AiHistoryItem[] }>("/v1/ai/history"),
+    aiUsage: () => request<{ usage: AiUsageView; autoToday: { autoActions: number; autoValueCents: number } }>("/v1/ai/usage"),
+    aiGetSettings: () => request<{ settings: AiSettings; defaults: AiSettings }>("/v1/ai/settings"),
+    aiPutSettings: (input: AiSettings) => request<{ settings: AiSettings; defaults: AiSettings }>("/v1/ai/settings", put(input)),
+    aiGetConsent: () => request<{ audio: boolean; updatedAt: string | null }>("/v1/ai/consent"),
+    aiPutConsent: (audio: boolean) => request<{ audio: boolean; updatedAt: string }>("/v1/ai/consent", put({ audio })),
+    /** Áudio cru no corpo; a duração vai no cabeçalho. O áudio não é guardado em lugar nenhum. */
+    aiTranscribe: (audio: Blob, seconds: number) =>
+      request<{ text: string; billedSeconds: number }>("/v1/ai/transcribe", {
+        method: "POST",
+        body: audio,
+        headers: { "Content-Type": audio.type || "audio/webm", "X-Audio-Seconds": String(Math.max(1, Math.ceil(seconds))) },
+      }),
   };
 }
 

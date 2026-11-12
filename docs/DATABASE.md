@@ -65,3 +65,20 @@ Firestore não tem migrations SQL. O versionamento é feito por:
 Sem constraints relacionais. A integridade é garantida por: regras (tipo, campos permitidos,
 `uid` igual ao do caminho e imutável), validação no Worker e, nas fases financeiras,
 commits atômicos do Firestore (Fase 2: `documents:commit` com pré-condições e incrementos).
+
+## Coleções do assistente (Fase 4)
+
+Todas em `users/{uid}/…`, com `uid` no documento; regras por dono.
+
+| Coleção | Conteúdo | Regras |
+|---|---|---|
+| `aiConversations/{id}` (+ `messages/{id}`) | título; mensagens `user`/`assistant` (texto) | mensagens imutáveis; conversa só avança `updatedAt`; dono pode apagar |
+| `aiActions/{id}` | ferramenta, `argsJson`, `argsHash`, resumo, valor, `reinforced`, `status`, `expiresAt` | nasce `pending`; só `status/resultNote/updatedAt` mudam, e só de `pending`/`executing`; sem exclusão |
+| `aiLogs/{id}` | evento, ferramenta, `actionId`, hash, detalhe curto | só criação (id determinístico por ação e evento); sem alteração nem exclusão |
+| `aiUsage/{AAAA-MM}` | `messages`, `voiceSeconds`, tokens | contadores só crescem; sem exclusão |
+| `aiDaily/{AAAA-MM-DD}` | `autoActions`, `autoValueCents` | idem |
+| `consents/audio` | `granted` | sem exclusão (revogar = `granted=false`) |
+| `preferences/ai` | limites de automação | validados nas regras |
+
+Lançamentos ganharam `origin` (`manual`|`ai`) e `aiActionId` (opcionais; ausentes = manual). Lembretes agora aceitam
+atualização de `title` e `remindAt`. Nenhum áudio é armazenado.

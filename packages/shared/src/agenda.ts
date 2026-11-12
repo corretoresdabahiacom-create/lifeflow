@@ -220,6 +220,15 @@ export const ReminderCreateSchema = z
   .strict();
 export type ReminderCreateInput = z.infer<typeof ReminderCreateSchema>;
 
+export const ReminderPatchSchema = z
+  .object({
+    title: ReminderCreateSchema.shape.title.optional(),
+    remindAt: ReminderCreateSchema.shape.remindAt.optional(),
+  })
+  .strict()
+  .refine((v) => Object.keys(v).length > 0, "Nada para alterar");
+export type ReminderPatchInput = z.infer<typeof ReminderPatchSchema>;
+
 // ---- Documentos devolvidos pela API ----
 export interface CalendarEvent {
   id: string;

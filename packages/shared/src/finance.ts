@@ -231,6 +231,9 @@ export interface Transaction {
   createdAt: string;
   updatedAt: string;
   voidedAt: string | null;
+  /** Quem criou o lançamento: `manual` (interface) ou `ai` (assistente, após confirmação). Gravado pelo servidor. */
+  origin?: "manual" | "ai";
+  aiActionId?: string | null;
 }
 
 export interface Transfer {

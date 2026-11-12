@@ -16,7 +16,7 @@ import { PayablesPage } from "./pages/finance/PayablesPage";
 import { ReportsPage } from "./pages/finance/ReportsPage";
 import { TransactionsPage } from "./pages/finance/TransactionsPage";
 import { LoginPage } from "./pages/LoginPage";
-import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { AssistantPage } from "./pages/assistant/AssistantPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 export function App() {
@@ -49,7 +49,7 @@ export function App() {
                 <Route path="tarefas" element={<TasksPage />} />
                 <Route path="notificacoes" element={<NotificationsPage />} />
               </Route>
-              <Route path="assistente" element={<PlaceholderPage title="Assistente" phase="Fase 4" />} />
+              <Route path="assistente" element={<AssistantPage />} />
               <Route path="ajustes" element={<SettingsPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

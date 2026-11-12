@@ -56,3 +56,23 @@ troca manual de `uid` não permite apropriação. Resultados reais em `PHASE_01_
 ## Conformidade
 
 Não afirmar conformidade com a LGPD sem revisão jurídica e operacional.
+
+## Assistente de IA (Fase 4)
+
+- **Ameaça: prompt injection** (texto em títulos de eventos/lançamentos tentando comandar o modelo). Mitigação:
+  saída de ferramenta marcada como DADOS, truncada e sem campos internos; o modelo nunca executa — só propõe; ações
+  pendentes mostram um resumo montado pelo backend; estorno/baixa/edição/exclusão sempre exigem confirmação; após
+  ler texto livre o turno não executa nada automaticamente. Testado com um modelo simulado que *obedece* a injeção.
+- **Ferramentas:** lista fechada de 23; nome fora da lista, JSON quebrado, campo extra (`uid`, `allowDuplicate`) e
+  ids de outro usuário são recusados e auditados.
+- **Parâmetros congelados:** `argsHash` conferido na execução; o corpo de `confirm` não aceita parâmetros.
+- **Segredos:** `DEEPSEEK_API_KEY` e `GROQ_API_KEY` só como secrets do Worker; mensagens de erro de provedor não
+  vazam corpo nem credencial (testado).
+- **Voz:** consentimento explícito e revogável; áudio repassado e descartado; limites de tamanho/duração/tipo.
+- **Auditoria:** `aiLogs` é só de inclusão (regras). **Retenção:** apagar uma conversa remove o texto, mas `aiActions`
+  (com os parâmetros e resumo) e `aiLogs` ficam, como trilha de auditoria; não há ainda rotina de exclusão/expiração
+  (a decidir com a revisão de privacidade, Fase 6).
+- **Dados enviados ao provedor de LLM:** o texto da conversa e os resultados das ferramentas consultadas (valores,
+  descrições, títulos). Isso precisa constar na política de privacidade; **não** há revisão jurídica.
+- **Limite conhecido:** o cliente tem o próprio token do Firestore, então um cliente malicioso poderia gravar
+  diretamente os próprios documentos de IA dentro do que as regras permitem (afeta só o próprio usuário).

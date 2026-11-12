@@ -16,6 +16,8 @@ import type { Env } from "./env";
 import { HttpError } from "./errors";
 import { FirestoreClient, type DocData } from "./firestore";
 import { handleAgenda } from "./agenda";
+import { handleAi } from "./ai/routes";
+import type { LLMProvider, SpeechToTextProvider } from "./ai/providers";
 import { handleFinance } from "./finance";
 import { allow, json, parseBody } from "./http";
 import { log } from "./logger";
@@ -24,6 +26,9 @@ export interface AppDeps {
   fetchImpl?: typeof fetch;
   keyResolver?: (env: Env) => KeyResolver;
   now?: () => Date;
+  /** Substitutos de provedores (testes). Em produção são criados a partir do ambiente. */
+  llm?: LLMProvider;
+  stt?: SpeechToTextProvider;
 }
 
 export function createHandler(deps: AppDeps = {}) {
@@ -72,7 +77,7 @@ export function createHandler(deps: AppDeps = {}) {
         ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
       });
 
-      const response = await route(request, url, user, db, now);
+      const response = await route(request, url, user, db, now, env, deps);
       return finish(response);
     } catch (error) {
       if (error instanceof HttpError) {
@@ -96,6 +101,8 @@ async function route(
   user: AuthenticatedUser,
   db: FirestoreClient,
   now: () => Date,
+  env: Env,
+  deps: AppDeps,
 ): Promise<Response> {
   const method = request.method;
   // Todos os caminhos do Firestore são derivados do uid do token.
@@ -106,6 +113,16 @@ async function route(
   if (finance) return finance;
   const agenda = await handleAgenda({ request, url, uid: user.uid, db, now });
   if (agenda) return agenda;
+  const ai = await handleAi(
+    { request, url, uid: user.uid, db, now },
+    {
+      env,
+      fetchImpl: deps.fetchImpl ?? fetch,
+      ...(deps.llm ? { llm: deps.llm } : {}),
+      ...(deps.stt ? { stt: deps.stt } : {}),
+    },
+  );
+  if (ai) return ai;
 
   switch (url.pathname) {
     case "/v1/me": {
@@ -157,7 +174,7 @@ function applyCors(headers: Headers, request: Request, env: Env): void {
   if (origin && origin === env.ALLOWED_ORIGIN) {
     headers.set("Access-Control-Allow-Origin", origin);
     headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-    headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key");
+    headers.set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key, X-Audio-Seconds");
     headers.set("Access-Control-Expose-Headers", "Idempotent-Replay, X-Request-Id, Content-Disposition");
     headers.set("Access-Control-Max-Age", "600");
   }

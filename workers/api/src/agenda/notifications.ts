@@ -1,5 +1,6 @@
 import {
   ReminderCreateSchema,
+  ReminderPatchSchema,
   addDays,
   utcMsToZoned,
   zonedToUtcMs,
@@ -343,10 +344,18 @@ export async function remindersRoute(ctx: Ctx, id: string | undefined, action: s
     return method === "GET" ? listReminders(ctx) : createReminder(ctx);
   }
   assertId(id);
-  allow(method, ["DELETE"]);
+  allow(method, ["PATCH", "DELETE"]);
   const path = pathsFor(ctx.uid).reminder(id);
   const stored = await ctx.db.getDoc(path);
   if (!stored) throw notFound("Lembrete");
+  if (method === "PATCH") {
+    const input = await parseBody(ctx.request, ReminderPatchSchema);
+    const changes: DocData = {};
+    if (input.title !== undefined) changes["title"] = input.title;
+    if (input.remindAt !== undefined) changes["remindAt"] = new Date(input.remindAt).toISOString();
+    await commitOrConflict(ctx, [{ path, fields: changes, merge: true, precondition: { updateTime: stored.updateTime } }]);
+    return json(publicDoc(id, { ...stored.data, ...changes }));
+  }
   await commitOrConflict(ctx, [{ path, delete: true, precondition: { updateTime: stored.updateTime } }]);
   return json({ deleted: true });
 }

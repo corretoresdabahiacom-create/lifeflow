@@ -18,12 +18,25 @@ APIs pagas só com configuração explícita e autorização.
 | `VITE_API_BASE_URL` | Frontend | URL do Worker | Não |
 | `VITE_USE_EMULATORS` | Frontend | `true` para usar emuladores locais | Não |
 
-## Variáveis futuras (fases 4 e 5)
+## Variáveis futuras (fase 5)
 
-`LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY`, `STT_*`, `EMAIL_*`, `PAYMENT_*`, `VAPID_*`:
+`EMAIL_*`, `PAYMENT_*`, `VAPID_*`:
 secrets do Worker, definidos quando cada adaptador for implementado.
 
 ## Desenvolvimento local
 
 Projeto de demonstração `demo-lifeflow` com emuladores do Firebase (sem credenciais reais).
 Os passos estão em `PHASE_01_FOUNDATION.md`.
+
+## Variáveis do assistente (Fase 4)
+
+| Variável | Tipo | Padrão | Descrição |
+|---|---|---|---|
+| `DEEPSEEK_API_KEY` | **secret** | — | Chave do LLM. Sem ela: `503 ai_not_configured` |
+| `GROQ_API_KEY` | **secret** | — | Chave da transcrição |
+| `LLM_PROVIDER` / `LLM_MODEL` / `LLM_BASE_URL` | var | `deepseek` / `deepseek-flash` / `https://api.deepseek.com` | Provedor do LLM |
+| `STT_PROVIDER` / `STT_MODEL` / `STT_BASE_URL` | var | `groq` / `whisper-large-v3-turbo` / `https://api.groq.com/openai/v1` | Transcrição |
+| `AI_DEFAULT_PLAN` | var | `free` | Plano aplicado a todos até a Fase 5 (`free`, `pro`, `premium_ai`) |
+
+Definir secrets com `wrangler secret put NOME`; nunca no Git. As variáveis `LLM_API_KEY` e `STT_*` previstas antes
+foram substituídas por estas.

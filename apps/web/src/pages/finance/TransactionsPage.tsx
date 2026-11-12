@@ -197,6 +197,12 @@ function TransactionRow({ tx, accountName, onVoid, busy }: { tx: Transaction; ac
           {formatDate(tx.date)} · {accountName}
           {tx.transferId ? " · transferência" : ""}
           {voided ? " · estornado" : ""}
+          {tx.origin === "ai" ? (
+            <>
+              {" · "}
+              <span className="badge badge--ai" title="Lançamento criado pelo assistente de IA, após confirmação">IA</span>
+            </>
+          ) : null}
         </span>
       </div>
       <div className="row__side">

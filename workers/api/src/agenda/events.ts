@@ -37,6 +37,7 @@ import {
   enumParam,
   loadAccount,
   notFound,
+  originFields,
   pathsFor,
   profileTimeZone,
   publicDoc,
@@ -605,6 +606,7 @@ async function createEventExpense(ctx: Ctx, id: string): Promise<Response> {
     payableId: null,
     timestamp,
     requestHash: idem.hash,
+    ...originFields(ctx),
   });
   const link: WriteOp =
     event.recurrence === null

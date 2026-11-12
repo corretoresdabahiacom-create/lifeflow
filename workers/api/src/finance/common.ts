@@ -17,6 +17,14 @@ export interface Ctx {
   uid: string;
   db: FirestoreClient;
   now: () => Date;
+  /** Preenchido só pelo executor da IA (nunca pelo cliente): marca a origem dos lançamentos criados. */
+  origin?: "ai";
+  aiActionId?: string;
+}
+
+/** Origem a gravar nos lançamentos: `manual` salvo quando a operação vem do executor de ações da IA. */
+export function originFields(ctx: Ctx): { origin: "manual" | "ai"; aiActionId: string | null } {
+  return ctx.origin === "ai" ? { origin: "ai", aiActionId: ctx.aiActionId ?? null } : { origin: "manual", aiActionId: null };
 }
 
 export const DEFAULT_TIMEZONE = "America/Sao_Paulo";
@@ -39,6 +47,15 @@ export function pathsFor(uid: string) {
     reminder: (id: string) => `${parent}/reminders/${id}`,
     notification: (id: string) => `${parent}/notifications/${id}`,
     preferences: `${parent}/preferences/app`,
+    aiSettings: `${parent}/preferences/ai`,
+    aiConsentAudio: `${parent}/consents/audio`,
+    aiConversation: (id: string) => `${parent}/aiConversations/${id}`,
+    aiMessage: (conversationId: string, id: string) => `${parent}/aiConversations/${conversationId}/messages/${id}`,
+    aiMessagesParent: (conversationId: string) => `${parent}/aiConversations/${conversationId}`,
+    aiAction: (id: string) => `${parent}/aiActions/${id}`,
+    aiLog: (id: string) => `${parent}/aiLogs/${id}`,
+    aiUsage: (month: string) => `${parent}/aiUsage/${month}`,
+    aiDaily: (date: string) => `${parent}/aiDaily/${date}`,
   };
 }
 

@@ -47,8 +47,23 @@ export class Client {
     return { status: response.status, body: parsed, text, headers: response.headers };
   }
 
+  /** Envia um corpo binário (ex.: áudio) com os cabeçalhos informados. */
+  async raw(method: string, path: string, body: ArrayBuffer, headers: Record<string, string>): Promise<Reply> {
+    const response = await this.app(path, { method, headers, body }, this.token);
+    const text = new TextDecoder().decode(await response.arrayBuffer());
+    let parsed: Record<string, unknown> = {};
+    try {
+      parsed = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      /* não JSON */
+    }
+    return { status: response.status, body: parsed, text, headers: response.headers };
+  }
+
   get = (path: string) => this.send("GET", path);
   patch = (path: string, body: unknown) => this.send("PATCH", path, body);
+  put = (path: string, body: unknown) => this.send("PUT", path, body);
+  del = (path: string) => this.send("DELETE", path);
   /** `key: null` envia sem Idempotency-Key; sem `key`, gera uma nova. */
   post = (path: string, body: unknown, key?: string | null) =>
     this.send("POST", path, body, key === null ? {} : { "Idempotency-Key": key ?? `k-${crypto.randomUUID()}` });

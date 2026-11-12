@@ -2,7 +2,8 @@
 
 SaaS de gestão financeira pessoal, agenda, tarefas e assistente inteligente.
 
-**Status:** Fase 3 (agenda) implementada, aguardando aprovação. Resultados e pendências em
+**Status:** Fase 4 (assistente de IA) implementada, aguardando aprovação; a Fase 3 (agenda) também aguarda aprovação.
+Resultados e pendências em [`docs/PHASE_04_AI.md`](docs/PHASE_04_AI.md) e
 [`docs/PHASE_03_AGENDA.md`](docs/PHASE_03_AGENDA.md). A Fase 2 (financeiro, aprovada) está em
 [`docs/PHASE_02_FINANCE.md`](docs/PHASE_02_FINANCE.md) e a Fase 1 em
 [`docs/PHASE_01_FOUNDATION.md`](docs/PHASE_01_FOUNDATION.md).

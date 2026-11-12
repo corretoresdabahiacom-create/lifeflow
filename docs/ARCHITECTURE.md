@@ -62,3 +62,17 @@ Todas as coleções pessoais ficam sob `users/{uid}`; a regra de propriedade é 
 | Resend (e-mail) | Não implementado |
 | Web Push (VAPID) | Não implementado |
 | Cloudflare (deploy) | Não implementado (somente configuração local do Worker) |
+
+## Assistente de IA (Fase 4)
+
+```
+Navegador ── POST /v1/ai/chat ──► Worker ── LLMProvider (DeepSeek) ◄─ tool calls
+                                    │            │
+                                    │            └─► ferramenta de leitura → dados (não confiáveis) → modelo
+                                    │            └─► ferramenta de escrita → aiActions (pendente, congelada)
+Navegador ── POST …/actions/{id}/confirm ─► Worker ─► rota interna (mesmas validações) ─► Firestore
+Navegador ── POST /v1/ai/transcribe (áudio) ─► Worker ─► SpeechToTextProvider (Groq) ─► texto (áudio descartado)
+```
+
+Código: `workers/api/src/ai/` (`providers/`, `tools.ts`, `engine.ts`, `store.ts`, `routes.ts`); front:
+`apps/web/src/pages/assistant/`. Integrações: DeepSeek e Groq implementadas, **não testadas contra as APIs reais**.

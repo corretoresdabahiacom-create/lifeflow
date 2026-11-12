@@ -78,3 +78,27 @@ Regras gerais:
 - Códigos: `400` validação, `401` autenticação, `403` regras do banco, `404`, `405`, `413`,
   `429` limite do banco, `502`/`504` falha do banco.
 - CORS: somente a origem em `ALLOWED_ORIGIN` (métodos GET, POST, PUT, PATCH, DELETE; cabeçalho `Idempotency-Key`).
+
+## Assistente de IA (Fase 4)
+
+Todas exigem autenticação. `POST /v1/ai/chat` exige `Idempotency-Key`.
+
+| Método e rota | Descrição |
+|---|---|
+| `POST /v1/ai/chat` `{conversationId?, message}` | Envia uma mensagem. Devolve `{conversationId, reply, actions[], usage}`. Reenvio com a mesma chave devolve a mesma resposta; a mesma chave com outra mensagem → `422 idempotency_key_reuse` |
+| `GET /v1/ai/conversations` · `GET/DELETE /v1/ai/conversations/{id}` | Lista, abre (mensagens e ações) e apaga o texto da conversa |
+| `GET /v1/ai/actions` | Ações pendentes e não expiradas |
+| `POST /v1/ai/actions/{id}/confirm` `{reinforced?}` | Executa a ação **congelada**. Sem parâmetros de ação. `422 reinforced_confirmation_required` se o valor passa do limite do usuário |
+| `POST /v1/ai/actions/{id}/reject` | Recusa |
+| `GET /v1/ai/history` | Trilha de auditoria (propostas, confirmações, bloqueios, falhas) |
+| `GET /v1/ai/usage` | Consumo do mês e limites do plano |
+| `GET/PUT /v1/ai/settings` | Limites de automação (`autoActionsPerDay`, `autoValueLimitCents`, `confirmAboveCents`) |
+| `GET/PUT /v1/ai/consent` `{audio}` | Consentimento para enviar áudio à transcrição |
+| `POST /v1/ai/transcribe` | Corpo = áudio cru; `Content-Type` do áudio; `X-Audio-Seconds` 1–60 obrigatório; ≤ 1,5 MB |
+| `PATCH /v1/reminders/{id}` `{title?, remindAt?}` | Novo (usado por `update_reminder`) |
+
+Códigos do assistente: `400` validação; `403` `audio_consent_required`, `voice_not_in_plan`; `404`; `409`
+`action_not_pending`; `410` `action_expired`; `413` áudio grande; `415` tipo de áudio; `422` `empty_transcription`,
+`reinforced_confirmation_required`, `idempotency_key_reuse`; `429` `ai_limit_reached`, `ai_voice_limit_reached`;
+`502` `ai_provider_error`; `503` `ai_not_configured`, `ai_provider_busy`; `504` `ai_provider_timeout`.
+CORS agora também permite o cabeçalho `X-Audio-Seconds`.

@@ -7,6 +7,7 @@ import {
   monthBounds,
   signedAmount,
   type Transaction,
+  type TransactionCreateInput,
   type TransactionType,
   type Transfer,
 } from "@lifeflow/shared";
@@ -24,6 +25,7 @@ import {
   intParam,
   loadAccount,
   notFound,
+  originFields,
   pathsFor,
   publicDoc,
   readIdempotency,
@@ -47,6 +49,8 @@ interface TxFields {
   payableId: string | null;
   timestamp: string;
   requestHash: string;
+  origin?: "manual" | "ai";
+  aiActionId?: string | null;
 }
 
 /** Documento de lançamento (livro-razão). Todos os campos existem sempre (nulos quando vazios). */
@@ -68,6 +72,8 @@ export function transactionDoc(f: TxFields): DocData {
     updatedAt: f.timestamp,
     voidedAt: null,
     requestHash: f.requestHash,
+    origin: f.origin ?? "manual",
+    aiActionId: f.aiActionId ?? null,
   };
 }
 
@@ -85,6 +91,31 @@ export function balanceOp(uid: string, accountId: string, deltaCents: number, ti
 const normalize = (text: string): string => text.trim().toLowerCase().replace(/\s+/g, " ");
 
 // ----------------------------------------------------------- lançamentos
+
+/** Lançamento igual (mesma data, conta, tipo, valor e descrição) já efetivado? Usado também pela IA antes de pedir confirmação. */
+export async function hasProbableDuplicate(
+  ctx: Ctx,
+  input: Pick<TransactionCreateInput, "accountId" | "type" | "amountCents" | "date" | "description">,
+  ownId: string | null,
+): Promise<boolean> {
+  const same = await ctx.db.query(pathsFor(ctx.uid).parent, {
+    collection: "transactions",
+    filters: [{ field: "date", op: "EQUAL", value: input.date }],
+    limit: 200,
+  });
+  const wanted = normalize(input.description);
+  return same.some(
+    (doc) =>
+      // O próprio lançamento (requisição simultânea com a mesma chave) cai no fluxo de repetição.
+      doc.id !== ownId &&
+      doc.data["status"] === "posted" &&
+      doc.data["accountId"] === input.accountId &&
+      doc.data["type"] === input.type &&
+      doc.data["amountCents"] === input.amountCents &&
+      normalize(String(doc.data["description"] ?? "")) === wanted,
+  );
+}
+
 
 export async function transactionsRoute(ctx: Ctx, id: string | undefined, action: string | undefined): Promise<Response> {
   const method = ctx.request.method;
@@ -164,30 +195,12 @@ async function createTransaction(ctx: Ctx): Promise<Response> {
   await checkCategory(ctx, input.categoryId, input.type);
 
   // 3) Duplicidade provável (chave diferente, mesmo conteúdo): exige confirmação explícita.
-  if (!input.allowDuplicate) {
-    const same = await ctx.db.query(p.parent, {
-      collection: "transactions",
-      filters: [{ field: "date", op: "EQUAL", value: input.date }],
-      limit: 200,
-    });
-    const wanted = normalize(input.description);
-    const duplicate = same.some(
-      (doc) =>
-        // O próprio lançamento (requisição simultânea com a mesma chave) cai no fluxo de repetição.
-        doc.id !== idem.id &&
-        doc.data["status"] === "posted" &&
-        doc.data["accountId"] === input.accountId &&
-        doc.data["type"] === input.type &&
-        doc.data["amountCents"] === input.amountCents &&
-        normalize(String(doc.data["description"] ?? "")) === wanted,
+  if (!input.allowDuplicate && (await hasProbableDuplicate(ctx, input, idem.id))) {
+    throw new HttpError(
+      409,
+      "possible_duplicate",
+      "Já existe um lançamento igual nesta data (mesma conta, tipo, valor e descrição). Se for intencional, reenvie com allowDuplicate=true",
     );
-    if (duplicate) {
-      throw new HttpError(
-        409,
-        "possible_duplicate",
-        "Já existe um lançamento igual nesta data (mesma conta, tipo, valor e descrição). Se for intencional, reenvie com allowDuplicate=true",
-      );
-    }
   }
 
   // 4) Lançamento + saldo, atômicos.
@@ -205,6 +218,7 @@ async function createTransaction(ctx: Ctx): Promise<Response> {
     payableId: null,
     timestamp,
     requestHash: idem.hash,
+    ...originFields(ctx),
   });
   const replay = await commitIdempotent(ctx, path, idem.id, idem, [
     { path, fields: doc, precondition: { exists: false } },
@@ -340,6 +354,7 @@ async function createTransfer(ctx: Ctx): Promise<Response> {
     payableId: null,
     timestamp,
     requestHash: idem.hash,
+    ...originFields(ctx),
   };
   const transfer: DocData = {
     uid: ctx.uid,

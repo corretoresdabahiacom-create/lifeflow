@@ -1,3 +1,4 @@
+import type { LLMProvider, SpeechToTextProvider } from "../src/ai/providers";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import type { KeyLike, JWK } from "jose";
 import { createHandler } from "../src/app";
@@ -288,9 +289,17 @@ export interface Clock {
   now: Date;
 }
 
-export function makeApp(signer: Signer, fetchImpl: typeof fetch, envOverride: Partial<Env> = {}, clock?: Clock) {
+export function makeApp(
+  signer: Signer,
+  fetchImpl: typeof fetch,
+  envOverride: Partial<Env> = {},
+  clock?: Clock,
+  providers: { llm?: LLMProvider; stt?: SpeechToTextProvider } = {},
+) {
   const handle = createHandler({
     fetchImpl,
+    ...(providers.llm ? { llm: providers.llm } : {}),
+    ...(providers.stt ? { stt: providers.stt } : {}),
     keyResolver: () => createLocalJWKSet({ keys: [signer.jwk] }),
     now: () => clock?.now ?? new Date("2026-11-09T12:00:00.000Z"),
   });

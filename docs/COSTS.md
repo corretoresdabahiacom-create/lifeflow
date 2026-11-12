@@ -56,3 +56,24 @@ O frontend chama ao abrir a agenda e **a cada 5 minutos por aba aberta**: custo 
 requisições do Worker proporcional a usuários com a agenda aberta. Mitigação já presente: janela limitada,
 leituras com limite e idempotência (sem gravações repetidas). Não medido em ambiente real; preços do Firestore e do
 Worker não consultados nesta fase. Web Push/agendador (futuro) trocaria essas leituras por execuções agendadas.
+
+## Estado (Fase 4) — IA
+
+**Nenhuma chamada paga foi feita** (não há chaves). Preços abaixo foram lidos nas páginas oficiais em 2026-11-12 e
+**podem mudar**; nenhuma gratuidade é prometida.
+
+| Serviço | Preço lido | Fonte |
+|---|---|---|
+| DeepSeek `deepseek-flash` | por 1 M tokens: entrada com cache $0,003 (fora do pico) / $0,006 (pico); entrada sem cache $0,15 / $0,30; saída $0,60 / $1,20. Pico: seg–sex 01–04 e 06–10 UTC | https://api-docs.deepseek.com/quick_start/pricing |
+| Groq `whisper-large-v3-turbo` | US$ 0,04 por hora de áudio transcrito. A página do modelo não informa mínimo de cobrança por requisição; mantive a regra conservadora de 10 s (a documentação de transcrição citava 10 s) | https://console.groq.com/docs/model/whisper-large-v3-turbo |
+
+Estimativa **pelo código, não medida**: uma mensagem típica faz 1–3 chamadas ao modelo (cada rodada reenvia o
+histórico de até 12 mensagens, o prompt de sistema e as 23 definições de ferramentas) — da ordem de alguns milhares de
+tokens de entrada e algumas centenas de saída. Com os preços acima isso fica na ordem de **frações de centavo de dólar
+por mensagem**; o tamanho real deve ser **medido** com o provedor real (o consumo de tokens é gravado em `aiUsage`).
+Voz: 60 s ≈ US$ 0,0007 pelo preço lido.
+
+Controles de custo implementados: limite mensal de mensagens e de minutos de voz por plano (gratuito 30 e 0), máx. de
+5 rodadas por mensagem, saída ≤ 1024 tokens, mensagem ≤ 2000 caracteres, áudio ≤ 60 s e ≤ 1,5 MB, falhas não consomem.
+Leituras do Firestore por mensagem: 2–4 de consumo/configuração mais as das ferramentas usadas (as listagens leem
+até o limite de cada consulta).

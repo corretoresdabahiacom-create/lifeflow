@@ -266,9 +266,13 @@ describe("agenda: categorias de tarefa e lembretes avulsos", () => {
     await assertFails(updateDoc(A("taskCategories/cat1"), { uid: "userB" }));
     await assertFails(updateDoc(A("taskCategories/cat1"), { createdAt: "x" }));
   });
-  it("lembrete avulso: cria e exclui; não pode ser alterado; data inválida é negada", async () => {
+  it("lembrete avulso: cria e exclui; só título e horário mudam; data inválida é negada", async () => {
     await assertSucceeds(setDoc(A("reminders/r1"), reminder("userA")));
-    await assertFails(updateDoc(A("reminders/rem1"), { title: "Outro" }));
+    await assertSucceeds(updateDoc(A("reminders/rem1"), { title: "Outro" }));
+    await assertSucceeds(updateDoc(A("reminders/rem1"), { remindAt: "2026-12-01T12:00:00.000Z" }));
+    await assertFails(updateDoc(A("reminders/rem1"), { remindAt: "amanhã" }));
+    await assertFails(updateDoc(A("reminders/rem1"), { uid: "userB" }));
+    await assertFails(updateDoc(A("reminders/rem1"), { requestHash: "outro" }));
     await assertFails(setDoc(A("reminders/r2"), reminder("userA", { remindAt: "amanhã" })));
     await assertFails(setDoc(A("reminders/r3"), reminder("userA", { title: "" })));
   });

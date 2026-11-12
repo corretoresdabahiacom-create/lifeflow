@@ -146,3 +146,23 @@ Problema, Alternativas, Justificativa, Impacto, Aprovação.
 - Ativar proteção da branch `main` no GitHub.
 - Criar projetos Firebase de staging e produção (a Fase 1 usa apenas o emulador local e o
   projeto de demonstração `demo-lifeflow`, sem credenciais reais).
+
+## D-008 — Assistente de IA (Fase 4)
+
+- **Propor, nunca gravar.** O modelo só gera *ações pendentes* com parâmetros congelados e hash; a execução ocorre
+  apenas em `confirm`, reaproveitando as rotas internas (mesmas validações e idempotência `ai-<actionId>`).
+  Alternativa descartada: deixar o modelo chamar as rotas diretamente com um "modo automático" — qualquer falha de
+  interpretação ou injeção viraria gravação.
+- **Origem no dado:** `origin` (`manual`|`ai`) e `aiActionId` nos lançamentos, definidos pelo servidor.
+- **Provedores atrás de interfaces** (`LLMProvider`, `SpeechToTextProvider`); DeepSeek `deepseek-flash` (modo
+  thinking desligado) e Groq `whisper-large-v3-turbo`; credenciais só em secrets; sem chave → `503 ai_not_configured`.
+- **Saída de ferramenta é dado não confiável:** marcada, truncada e sem campos internos; após ler texto livre o
+  turno não executa nada automaticamente.
+- **Automação opcional e limitada:** padrão = confirmar tudo. Com "confirmar criações" desligado, só criações dentro de
+  ações/dia e valor/dia; acima de `confirmAboveCents` a confirmação é reforçada; estorno, baixa, edição e exclusão
+  sempre confirmam.
+- **Consumo por plano** com contadores atômicos (`aiUsage/{AAAA-MM}`, `aiDaily/{AAAA-MM-DD}`); plano temporário
+  por `AI_DEFAULT_PLAN` até a Fase 5. Falha do provedor não consome.
+- **Voz:** consentimento explícito; áudio cru no corpo, duração no cabeçalho, nada gravado; cobrança mínima de 10 s.
+- **Lembretes** ganharam `PATCH` (título e horário) para `update_reminder`; novo horário gera nova notificação.
+- **Premissas não verificadas:** comportamento real das APIs DeepSeek/Groq; preços (ver `COSTS.md`).
