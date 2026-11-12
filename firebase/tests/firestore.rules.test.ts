@@ -171,6 +171,8 @@ describe("validação de dados e negação por padrão", () => {
     // "accounts" passou a existir na Fase 2; usa-se uma coleção que continua não declarada.
     await assertFails(getDoc(doc(db, "users/userA/subscriptions/x")));
     await assertFails(setDoc(doc(db, "plans/free"), { price: 0 }));
-    await assertFails(getDoc(doc(db, "plans/free")));
+    // `plans` passou a existir na Fase 5 (leitura para autenticados, escrita negada); usa-se outra raiz não declarada.
+    await assertFails(getDoc(doc(db, "invoices/free")));
+    await assertFails(setDoc(doc(db, "invoices/free"), { price: 0 }));
   });
 });
