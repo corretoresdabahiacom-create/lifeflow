@@ -64,7 +64,7 @@ em ambiente real.
 ## Estado (Fase 4)
 
 Resultados e mapa dos testes obrigatórios em `PHASE_04_AI.md`. `pnpm test` = 354 (shared 97, web 70, api 187).
-A suíte do assistente (`workers/api/test/ai.suite.ts`) roda no Firestore falso (53 testes) e, na CI, no emulador real.
+A suíte do assistente (`workers/api/test/ai.suite.ts`) roda no Firestore falso (53 testes) e, na CI, no emulador real (execução `43154951563`: regras 131, integração 127 + 1 ignorado).
 O LLM e a transcrição são **simulados** (`ScriptedLLM`, `ScriptedSTT`): seguem um roteiro, incluindo um modelo que
 obedece uma injeção de prompt. `ai.providers.test.ts` testa os adaptadores DeepSeek/Groq com `fetch` simulado
 (formato do pedido, mapeamento de erros, timeout). `firebase/tests/ai.rules.test.ts` cobre as regras (só CI).

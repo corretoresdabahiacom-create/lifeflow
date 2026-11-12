@@ -2,7 +2,7 @@
 
 **Status:** implementada; **aguardando aprovação do responsável**. A Fase 5 não foi iniciada. A Fase 3 também
 segue **aguardando aprovação** (o responsável disse que a aprovará depois).
-Comandos obrigatórios e testes automatizados aprovados localmente; emulador real e regras: ver "Resultados reais".
+Comandos obrigatórios e testes automatizados aprovados, inclusive no emulador real do Firestore com as regras reais (CI).
 **Nenhuma chamada real ao DeepSeek ou à Groq foi feita** (não há chaves nem projeto Firebase real): os adaptadores
 foram testados só com `fetch` simulado, e o fluxo do assistente com um modelo simulado que segue um roteiro.
 O checklist manual no navegador **não foi executado**. Decisões: `DECISIONS.md` D-008.
@@ -59,8 +59,19 @@ Node 22, pnpm 9.15.0, executados nesta sessão.
 | `pnpm build` | web ok; Worker `wrangler deploy --dry-run` ok |
 
 **Emulador real e regras (somente na CI):** `pnpm test:rules` (inclui 18 testes novos de `ai.rules.test.ts`) e
-`pnpm test:integration` (suíte do assistente no emulador real, menos os 2 testes marcados como "somente falso").
-Resultado e id da execução: ver a seção "CI" ao final (preenchida após o push).
+`pnpm test:integration` (suíte do assistente no emulador real, menos 1 teste marcado como "somente falso").
+
+### CI (emulador real)
+
+Primeira execução (`43154788895`, commit `11aefc0`): job de lint/typecheck/test/build verde; **o job do emulador
+falhou**: o teste novo de regras mostrou que o consentimento de áudio podia ser excluído (a regra estava `isOwner`,
+a intenção era negar). Corrigi a regra para `false`. Execução seguinte (`43154951563`, `develop`): **ambos os jobs verdes**:
+
+| Suíte | Resultado |
+|---|---|
+| `pnpm test:rules` | **131 testes** (113 anteriores + 18 de `ai.rules.test.ts`) |
+| `pnpm test:integration` | **127 aprovados, 1 ignorado de propósito** (o teste "somente falso" de hash adulterado) = 75 anteriores + 53 do assistente |
+| lint, typecheck, test, build | verdes (shared 97, web 70, api 187) |
 
 ### Mapa dos testes obrigatórios (`workers/api/test/ai.suite.ts`, salvo indicação)
 
