@@ -92,3 +92,16 @@ Resultado da CI: ver registro no fim deste arquivo.
 - **Custo de IA no painel é estimativa** (preços de `COSTS.md`), não a fatura.
 - Leitura de assinaturas no painel limitada a 1000 (o painel avisa quando truncado).
 - **Regras e emulador só foram executados na CI**; navegador real não foi usado; `main` continua sem proteção.
+
+## Registro de execução da CI
+
+- Execuções iniciais falharam e foram corrigidas (a CI é o único lugar onde emulador e regras rodam):
+  1. Teste da Fase 1 assumia que `plans` não existia (regra nova) → teste atualizado.
+  2. Coleções globais (`plans`, `subscriptions`, `webhookEvents`, `adminLogs`) vazavam entre testes no emulador →
+     cada teste começa com elas vazias e a suíte limpa ao final.
+  3. **Bug real:** consultas de grupo de `aiUsage`/`aiLogs` usavam filtro `>=` sem ordenar pelo mesmo campo
+     (`INVALID_ARGUMENT` no Firestore; 502 no painel). O cliente agora ordena pelo campo da desigualdade e o
+     Firestore falso passou a aplicar a mesma regra.
+  4. Asserção do consumo de IA agregado passou a comparar diferença (agregado global).
+- Execução final: CI `44276701544` em `develop` — **verde** (lint/typecheck/test/build + regras + integração com o
+  emulador real).
