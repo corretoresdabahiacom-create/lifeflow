@@ -182,6 +182,11 @@ export function fakeFirestore(initial: Record<string, DocData> = {}) {
       .map(([path, data]) => ({ id: group ? path : path.slice(prefix.length), data }));
 
     const filters: Filter[] = !sq.where ? [] : "compositeFilter" in sq.where ? sq.where.compositeFilter.filters : [sq.where];
+    // Regra do Firestore real (e do emulador): com filtro de desigualdade, a primeira ordenação é pelo mesmo campo.
+    const inequality = filters.find((f) => f.fieldFilter.op !== "EQUAL")?.fieldFilter.field.fieldPath;
+    if (inequality && (sq.orderBy?.[0]?.field.fieldPath ?? "__name__") !== inequality) {
+      return new Response(JSON.stringify({ error: { code: 400, status: "INVALID_ARGUMENT", message: "inequality filter property and first sort order must be the same" } }), { status: 400 });
+    }
     for (const { fieldFilter } of filters) {
       const field = fieldFilter.field.fieldPath;
       const wanted = decodeValue(fieldFilter.value);

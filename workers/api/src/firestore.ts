@@ -206,15 +206,18 @@ export class FirestoreClient {
     if (filters.length === 1) structuredQuery["where"] = filters[0];
     else if (filters.length > 1) structuredQuery["where"] = { compositeFilter: { op: "AND", filters } };
 
-    const direction = spec.orderBy?.direction ?? "ASCENDING";
+    // Firestore exige que a 1ª ordenação seja o campo do filtro de desigualdade; sem ordem pedida, usa-se esse campo.
+    const inequality = (spec.filters ?? []).find((f) => f.op !== "EQUAL")?.field;
+    const effective = spec.orderBy ?? (inequality ? { field: inequality, direction: "ASCENDING" as const } : undefined);
+    const direction = effective?.direction ?? "ASCENDING";
     const orderBy: Array<Record<string, unknown>> = [];
-    if (spec.orderBy) orderBy.push({ field: { fieldPath: spec.orderBy.field }, direction });
+    if (effective) orderBy.push({ field: { fieldPath: effective.field }, direction });
     orderBy.push({ field: { fieldPath: "__name__" }, direction });
     structuredQuery["orderBy"] = orderBy;
 
     if (spec.after) {
       const reference = { referenceValue: `${this.resourceName(parent)}/${spec.collection}/${spec.after.id}` };
-      const values = spec.orderBy
+      const values = effective
         ? [spec.after.value === null ? { nullValue: null } : encodeValue(spec.after.value), reference]
         : [reference];
       structuredQuery["startAt"] = { values, before: false };
