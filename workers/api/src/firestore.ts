@@ -142,6 +142,25 @@ export class FirestoreClient {
     await this.assertOk(response);
   }
 
+  /** IDs das subcoleções de um documento (`users/{uid}`); usado só na exclusão de conta. */
+  async listCollectionIds(parent: string): Promise<string[]> {
+    const ids: string[] = [];
+    let pageToken: string | undefined;
+    do {
+      const response = await this.request(
+        "POST",
+        `${this.base}/${parent}:listCollectionIds`,
+        JSON.stringify({ pageSize: 100, ...(pageToken ? { pageToken } : {}) }),
+        1,
+      );
+      await this.assertOk(response);
+      const body = (await response.json()) as { collectionIds?: string[]; nextPageToken?: string };
+      ids.push(...(body.collectionIds ?? []));
+      pageToken = body.nextPageToken;
+    } while (pageToken);
+    return ids;
+  }
+
   async delete(path: string): Promise<void> {
     const response = await this.request("DELETE", `${this.base}/${path}`, undefined, 0);
     if (response.status === 404) return;

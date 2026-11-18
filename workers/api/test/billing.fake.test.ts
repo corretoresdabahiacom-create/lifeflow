@@ -3,6 +3,8 @@ import { ScriptedLLM, ScriptedSTT } from "./ai.suite";
 import { Client } from "./finance.suite";
 import { env, fakeFirestore, makeApp, signToken, uidOfToken, type Clock, type Signer } from "./helpers";
 import { createSystemDb } from "../src/system";
+import { FirestoreClient } from "../src/firestore";
+import { defineAccountSuite } from "./account.suite";
 
 async function fakeWorld(signer: Signer, options: BillingWorldOptions): Promise<BillingWorld> {
   const fake = fakeFirestore();
@@ -29,8 +31,11 @@ async function fakeWorld(signer: Signer, options: BillingWorldOptions): Promise<
     uidA: uidOfToken(a),
     uidB: uidOfToken(b),
     app,
+    raw: new FirestoreClient({ ...env, ...envOverride }, { idToken: "owner", fetchImpl }),
     sys: () => createSystemDb({ ...env, ...envOverride }, fetchImpl),
   };
 }
 
 defineBillingSuite("assinaturas, limites e painel admin (Firestore falso em memória)", fakeWorld, { fake: true });
+
+defineAccountSuite("exportação e exclusão de conta (Firestore falso em memória)", fakeWorld, { rawClient: (w) => w.raw });

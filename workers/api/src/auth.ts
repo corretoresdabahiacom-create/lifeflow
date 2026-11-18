@@ -9,6 +9,8 @@ export const DEFAULT_JWKS_URL =
 export interface AuthenticatedUser {
   uid: string;
   email?: string;
+  /** Momento (epoch, s) do último login com credencial; usado para exigir login recente em ações sensíveis. */
+  authTime?: number;
   /** Claim `admin: true` do ID token (definida só por quem administra o projeto Firebase). */
   admin?: boolean;
 }
@@ -65,7 +67,12 @@ export async function verifyFirebaseToken(
 
     const email = typeof payload["email"] === "string" ? payload["email"] : undefined;
     const admin = payload["admin"] === true;
-    return { uid, ...(email ? { email } : {}), ...(admin ? { admin } : {}) };
+    return {
+      uid,
+      ...(email ? { email } : {}),
+      ...(admin ? { admin } : {}),
+      ...(typeof authTime === "number" ? { authTime } : {}),
+    };
   } catch (error) {
     if (error instanceof HttpError) throw error;
     if (error instanceof joseErrors.JWTExpired) throw unauthorized("Token expirado");

@@ -3,6 +3,8 @@ import { ScriptedLLM, ScriptedSTT } from "./ai.suite";
 import { Client } from "./finance.suite";
 import { env, makeApp, signToken, uidOfToken, type Clock, type Signer } from "./helpers";
 import { createSystemDb } from "../src/system";
+import { FirestoreClient } from "../src/firestore";
+import { defineAccountSuite } from "./account.suite";
 
 /** Mesma suíte contra o EMULADOR REAL do Firestore. Execução: `pnpm test:integration`. */
 const host = process.env["FIRESTORE_EMULATOR_HOST"];
@@ -37,8 +39,11 @@ async function emulatorWorld(signer: Signer, options: BillingWorldOptions): Prom
     uidA: uidOfToken(a),
     uidB: uidOfToken(b),
     app,
+    raw: new FirestoreClient({ ...env, ...envOverride }, { idToken: "owner", fetchImpl: fetch }),
     sys: () => createSystemDb({ ...env, ...envOverride }, fetch),
   };
 }
 
 defineBillingSuite("assinaturas, limites e painel admin (emulador real do Firestore + Security Rules)", emulatorWorld, { fake: false });
+
+defineAccountSuite("exportação e exclusão de conta (emulador real do Firestore + Security Rules)", emulatorWorld, { rawClient: (w) => w.raw });

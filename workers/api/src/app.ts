@@ -19,6 +19,7 @@ import { handleAgenda } from "./agenda";
 import { handleAi } from "./ai/routes";
 import type { PaymentProvider } from "./billing/provider";
 import { handleAdmin } from "./admin/routes";
+import { handleAccount } from "./account/routes";
 import { handleBilling } from "./billing/routes";
 import { createSystemDb } from "./system";
 import { handleWebhook } from "./billing/webhook";
@@ -127,6 +128,11 @@ async function route(
     if (!user.admin) throw new HttpError(403, "admin_required", "Acesso restrito a administradores");
     return handleAdmin({ request, url, uid: user.uid, ...(user.email ? { email: user.email } : {}), now, sys: await createSystemDb(env, deps.fetchImpl ?? fetch), env });
   }
+  const account = await handleAccount(
+    { request, url, uid: user.uid, db, now },
+    { env, fetchImpl: deps.fetchImpl ?? fetch, ...(deps.payments ? { payments: deps.payments } : {}), ...(user.authTime !== undefined ? { authTime: user.authTime } : {}) },
+  );
+  if (account) return account;
   const billing = await handleBilling(
     { request, url, uid: user.uid, db, now },
     { env, fetchImpl: deps.fetchImpl ?? fetch, ...(deps.payments ? { payments: deps.payments } : {}), ...(user.email ? { email: user.email } : {}) },

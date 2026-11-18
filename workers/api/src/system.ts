@@ -148,15 +148,69 @@ export function clearServiceAccountTokenCache(): void {
  * Cria o cliente privilegiado restrito. Com `FIRESTORE_BASE_URL` (emulador/testes) usa o token "owner" do
  * emulador, que ignora as regras; em produção exige `GOOGLE_SERVICE_ACCOUNT_JSON`.
  */
-export async function createSystemDb(env: Env, fetchImpl: typeof fetch = fetch): Promise<SystemDb> {
-  let token: string;
-  if (env.FIRESTORE_BASE_URL) {
-    token = "owner";
-  } else {
-    if (!env.GOOGLE_SERVICE_ACCOUNT_JSON) {
-      throw new HttpError(503, "billing_not_configured", "Cobrança ainda não está configurada");
-    }
-    token = await serviceAccountToken(env.GOOGLE_SERVICE_ACCOUNT_JSON, fetchImpl);
+async function serviceToken(env: Env, fetchImpl: typeof fetch): Promise<string> {
+  if (env.FIRESTORE_BASE_URL) return "owner";
+  if (!env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    throw new HttpError(503, "billing_not_configured", "Cobrança ainda não está configurada");
   }
-  return new SystemDb(new FirestoreClient(env, { idToken: token, fetchImpl }));
+  return serviceAccountToken(env.GOOGLE_SERVICE_ACCOUNT_JSON, fetchImpl);
+}
+
+export async function createSystemDb(env: Env, fetchImpl: typeof fetch = fetch): Promise<SystemDb> {
+  return new SystemDb(new FirestoreClient(env, { idToken: await serviceToken(env, fetchImpl), fetchImpl }));
+}
+
+// ---- Exclusão de conta (LGPD) ----
+
+/**
+ * Apaga TUDO de UM usuário. É o único trecho privilegiado que alcança conteúdo de usuário, e só o do próprio
+ * solicitante: está preso ao uid do token (`users/{uid}/**` e `subscriptions/{uid}`), pois as Security Rules
+ * proíbem o próprio cliente de excluir perfil, trilha de auditoria e consentimentos.
+ */
+export class UserErasure {
+  private readonly prefix: string;
+
+  constructor(
+    private readonly client: FirestoreClient,
+    private readonly uid: string,
+  ) {
+    if (!uid || uid.includes("/") || uid.length > 128) throw new SystemAccessError("uid inválido");
+    this.prefix = `users/${uid}`;
+  }
+
+  private guard(path: string): void {
+    if (path !== this.prefix && !path.startsWith(`${this.prefix}/`) && path !== `subscriptions/${this.uid}`) {
+      throw new SystemAccessError(path);
+    }
+  }
+
+  /** Remove o documento e, recursivamente, todas as suas subcoleções. Devolve quantos documentos foram apagados. */
+  private async eraseTree(path: string): Promise<number> {
+    this.guard(path);
+    let count = 0;
+    for (const collection of await this.client.listCollectionIds(path)) {
+      for (let round = 0; round < 1000; round += 1) {
+        const docs = await this.client.query(path, { collection, limit: 200 });
+        if (docs.length === 0) break;
+        for (const doc of docs) count += await this.eraseTree(`${path}/${collection}/${doc.id}`);
+        await this.client.commit(docs.map((d) => ({ path: `${path}/${collection}/${d.id}`, delete: true })));
+        count += docs.length;
+      }
+    }
+    return count;
+  }
+
+  async eraseAll(): Promise<number> {
+    const count = await this.eraseTree(this.prefix);
+    this.guard(`subscriptions/${this.uid}`);
+    await this.client.commit([
+      { path: this.prefix, delete: true },
+      { path: `subscriptions/${this.uid}`, delete: true },
+    ]);
+    return count + 1;
+  }
+}
+
+export async function createUserErasure(env: Env, fetchImpl: typeof fetch, uid: string): Promise<UserErasure> {
+  return new UserErasure(new FirestoreClient(env, { idToken: await serviceToken(env, fetchImpl), fetchImpl }), uid);
 }

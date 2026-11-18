@@ -10,6 +10,7 @@ import {
   type WebhookRequest,
   type WebhookResult,
 } from "../src/billing/provider";
+import type { FirestoreClient } from "../src/firestore";
 import { SystemAccessError, type SystemDb } from "../src/system";
 import { say, type ScriptedLLM, type ScriptedSTT } from "./ai.suite";
 import type { Client, Reply, World } from "./finance.suite";
@@ -113,6 +114,8 @@ export interface BillingWorld extends World {
   app: (path: string, init?: RequestInit, token?: string) => Promise<Response>;
   /** Cliente privilegiado para conferir/semear o banco direto. */
   sys: () => Promise<SystemDb>;
+  /** Cliente "dono" (ignora as regras) só para CONFERIR o que sobrou no banco; nunca usado pelo Worker. */
+  raw: FirestoreClient;
 }
 export interface BillingWorldOptions {
   noEmailForA?: boolean;

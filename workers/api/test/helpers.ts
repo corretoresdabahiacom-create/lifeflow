@@ -39,11 +39,13 @@ export interface TokenOptions {
   kid?: string;
   /** Claim `admin: true` (só o administrador do projeto Firebase consegue defini-la). */
   admin?: boolean;
+  /** Momento do último login (epoch, s). Padrão: agora - 10 s. */
+  authTime?: number;
 }
 
 export async function signToken(signer: Signer, options: TokenOptions = {}): Promise<string> {
   const nowSec = Math.floor(Date.now() / 1000);
-  const jwt = new SignJWT({ email: options.email ?? "user@example.com", auth_time: nowSec - 10, ...(options.admin ? { admin: true } : {}) })
+  const jwt = new SignJWT({ email: options.email ?? "user@example.com", auth_time: options.authTime ?? nowSec - 10, ...(options.admin ? { admin: true } : {}) })
     .setProtectedHeader({ alg: "RS256", kid: options.kid ?? "k1" })
     .setIssuer(options.issuer ?? `https://securetoken.google.com/${PROJECT_ID}`)
     .setAudience(options.audience ?? PROJECT_ID)
@@ -259,6 +261,16 @@ export function fakeFirestore(initial: Record<string, DocData> = {}) {
       if (failure === "network") throw new TypeError("network error");
       if (typeof failure === "number") return new Response("{}", { status: failure });
       return commit(body ?? "{}");
+    }
+    if (method === "POST" && url.pathname.endsWith(":listCollectionIds")) {
+      const parent = pathAfterDocuments(url).replace(/:listCollectionIds$/, "");
+      const ids = new Set<string>();
+      for (const path of docs.keys()) {
+        if (!path.startsWith(`${parent}/`)) continue;
+        const rest = path.slice(parent.length + 1).split("/");
+        if (rest.length >= 2) ids.add(rest[0] as string);
+      }
+      return new Response(JSON.stringify(ids.size ? { collectionIds: [...ids].sort() } : {}), { status: 200 });
     }
     if (method === "POST" && url.pathname.endsWith("/documents:runQuery")) return runQuery("", body ?? "{}");
     if (method === "POST" && url.pathname.endsWith(":runQuery")) {
