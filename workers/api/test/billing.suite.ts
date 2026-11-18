@@ -559,6 +559,8 @@ export function defineBillingSuite(
 
     it("admin: indicadores (usuários, assinaturas, MRR, cancelamentos, IA, erros) e auditoria de cada acesso", async () => {
       const w = await world();
+      // O consumo de IA é agregado entre TODOS os usuários (no emulador, restos de testes anteriores): compara a diferença.
+      const baseline = (await w.Admin.get("/v1/admin/overview")).body["ai"] as { messages: number; activeUsers: number };
       await w.A.put("/v1/profile", { displayName: "Ana", locale: "pt-BR", timezone: "America/Sao_Paulo", currency: "BRL" });
       await w.B.put("/v1/profile", { displayName: "Bia", locale: "pt-BR", timezone: "America/Sao_Paulo", currency: "BRL" });
       await subscribe(w, w.A, "pro");
@@ -577,7 +579,8 @@ export function defineBillingSuite(
       expect(o["subscriptions"].mrrCents).toBe(1490);
       expect(o["subscriptions"].canceledLast30d).toBe(1);
       expect(o["subscriptions"].activeByPlan).toMatchObject({ pro: 1 });
-      expect(o["ai"]).toMatchObject({ messages: 2, activeUsers: 2 });
+      expect(o["ai"].messages - baseline.messages).toBe(2);
+      expect(o["ai"].activeUsers - baseline.activeUsers).toBe(2);
       expect(o["ai"].estimatedCostUsd).toBeGreaterThan(0);
       expect(o["notifications"].available).toBe(false);
 
