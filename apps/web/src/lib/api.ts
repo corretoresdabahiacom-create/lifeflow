@@ -333,6 +333,15 @@ export function createApiClient(options: ApiClientOptions) {
       return response.blob();
     },
 
+    // ---- Conta (Fase 6): exportação completa e exclusão (LGPD) ----
+    /** Baixa todos os dados do usuário em JSON (token no cabeçalho, nunca na URL). */
+    async exportAccount(): Promise<Blob> {
+      const response = await send("/v1/account/export");
+      if (!response.ok) throw new ApiError(response.status, "export_failed", "Não foi possível exportar seus dados");
+      return response.blob();
+    },
+    deleteAccount: () => request<{ deleted: boolean; documents: number }>("/v1/account/delete", post({ confirm: "EXCLUIR MINHA CONTA" })),
+
     // ---- Agenda (Fase 3) ----
     listEvents: (from: string, to: string, kind?: string) =>
       request<OccurrencesReply>(withQuery("/v1/events", { from, to, kind: kind ?? null })),

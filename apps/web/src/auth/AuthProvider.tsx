@@ -1,5 +1,8 @@
 import {
   createUserWithEmailAndPassword,
+  deleteUser,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
@@ -51,6 +54,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async signOut() {
         // Encerra a sessão no SDK; sem sessão não existe token para enviar ao Worker.
         await firebaseSignOut(requireAuth());
+      },
+      async reauthenticate(password) {
+        const current = requireAuth().currentUser;
+        if (!current?.email) throw new Error("Sem sessão ativa");
+        await reauthenticateWithCredential(current, EmailAuthProvider.credential(current.email, password));
+      },
+      async deleteAuthUser() {
+        const current = requireAuth().currentUser;
+        if (current) await deleteUser(current);
       },
       async getIdToken(forceRefresh) {
         const current = requireAuth().currentUser;

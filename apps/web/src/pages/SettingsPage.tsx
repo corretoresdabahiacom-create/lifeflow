@@ -8,6 +8,7 @@ import {
 } from "@lifeflow/shared";
 import { useEffect, useState, type FormEvent } from "react";
 import { useApi } from "../app/ApiProvider";
+import { useAuth } from "../auth/context";
 import { useProfile } from "../app/ProfileProvider";
 import { useTheme } from "../app/ThemeProvider";
 import { LoadingState } from "../components/States";
@@ -207,6 +208,101 @@ function PreferencesForm() {
   );
 }
 
+export const DELETE_PHRASE = "EXCLUIR MINHA CONTA";
+
+/** Meus dados (LGPD): exportação completa e exclusão definitiva da conta. */
+export function AccountSection() {
+  const api = useApi();
+  const { reauthenticate, deleteAuthUser, signOut } = useAuth();
+  const [notice, setNotice] = useState<Notice>(null);
+  const [busy, setBusy] = useState(false);
+  const [password, setPassword] = useState("");
+  const [phrase, setPhrase] = useState("");
+
+  async function onExport() {
+    setNotice(null);
+    setBusy(true);
+    try {
+      const blob = await api.exportAccount();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `lifeflow-dados-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setNotice({ kind: "ok", text: "Arquivo gerado. Guarde-o em local seguro: contém seus dados financeiros." });
+    } catch (e) {
+      setNotice({ kind: "error", text: errorText(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onDelete(event: FormEvent) {
+    event.preventDefault();
+    setNotice(null);
+    if (phrase !== DELETE_PHRASE) {
+      setNotice({ kind: "error", text: `Digite exatamente: ${DELETE_PHRASE}` });
+      return;
+    }
+    setBusy(true);
+    try {
+      await reauthenticate(password);
+    } catch {
+      setNotice({ kind: "error", text: "Senha incorreta." });
+      setBusy(false);
+      return;
+    }
+    try {
+      await api.deleteAccount();
+    } catch (e) {
+      setNotice({ kind: "error", text: errorText(e) });
+      setBusy(false);
+      return;
+    }
+    // Os dados já foram apagados no servidor; remover o login é o último passo (e a sessão termina de qualquer forma).
+    try {
+      await deleteAuthUser();
+    } catch {
+      /* o login pode ficar órfão, mas sem nenhum dado */
+    }
+    await signOut().catch(() => undefined);
+  }
+
+  return (
+    <section className="card form" aria-labelledby="t-dados">
+      <h2 id="t-dados">Meus dados</h2>
+      <p>Baixe uma cópia de tudo o que o LIFEFlow guarda sobre você (lançamentos, agenda, conversas, assinatura).</p>
+      <button type="button" className="btn" onClick={() => void onExport()} disabled={busy}>
+        Exportar meus dados (JSON)
+      </button>
+      <h3>Excluir conta</h3>
+      <p>
+        Apaga <strong>definitivamente</strong> todos os seus dados e cancela a assinatura. Não há como desfazer. Exporte seus
+        dados antes, se quiser guardá-los.
+      </p>
+      <form className="form" onSubmit={(e) => void onDelete(e)}>
+        <label className="field">
+          <span>Sua senha</span>
+          <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        </label>
+        <label className="field">
+          <span>Para confirmar, digite {DELETE_PHRASE}</span>
+          <input value={phrase} onChange={(e) => setPhrase(e.target.value)} autoComplete="off" required />
+        </label>
+        <button type="submit" className="btn danger" disabled={busy}>
+          Excluir minha conta
+        </button>
+      </form>
+      {notice && (
+        <p role={notice.kind === "error" ? "alert" : "status"} className={notice.kind === "error" ? "error" : "ok"}>
+          {notice.text}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export function SettingsPage() {
   return (
     <>
@@ -214,6 +310,7 @@ export function SettingsPage() {
       <div className="grid">
         <ProfileForm />
         <PreferencesForm />
+        <AccountSection />
       </div>
     </>
   );

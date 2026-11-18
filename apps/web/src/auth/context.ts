@@ -16,6 +16,10 @@ export interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Confirma a senha do usuário logado (login recente, exigido para excluir a conta). */
+  reauthenticate: (password: string) => Promise<void>;
+  /** Remove o usuário do Firebase Auth (depois que o Worker apagou os dados). */
+  deleteAuthUser: () => Promise<void>;
   /** ID token vigente; `forceRefresh` renova a sessão pelo SDK. */
   getIdToken: (forceRefresh: boolean) => Promise<string>;
 }
