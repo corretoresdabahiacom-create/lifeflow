@@ -305,9 +305,9 @@ const WRITE_TOOLS: ToolDef[] = [
     schema: z
       .object({
         transactionId: IdSchema,
-        description: TransactionPatchSchema.innerType().shape.description,
-        notes: TransactionPatchSchema.innerType().shape.notes,
-        categoryId: TransactionPatchSchema.innerType().shape.categoryId,
+        description: TransactionPatchSchema.shape.description,
+        notes: TransactionPatchSchema.shape.notes,
+        categoryId: TransactionPatchSchema.shape.categoryId,
       })
       .strict()
       .refine((v) => Object.keys(v).length > 1, "Nada para alterar"),

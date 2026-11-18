@@ -32,13 +32,13 @@ export const DateSchema = z
 
 /** Valor positivo em centavos inteiros. Decimais (12.5) são rejeitados. */
 export const PositiveCentsSchema = z
-  .number({ invalid_type_error: "Valor deve ser um número" })
+  .number({ error: "Valor deve ser um número" })
   .int("Valor deve ser inteiro em centavos")
   .positive("Valor deve ser maior que zero")
   .max(MAX_CENTS, "Valor acima do limite");
 
 export const SignedCentsSchema = z
-  .number({ invalid_type_error: "Valor deve ser um número" })
+  .number({ error: "Valor deve ser um número" })
   .int("Valor deve ser inteiro em centavos")
   .min(-MAX_CENTS)
   .max(MAX_CENTS);
