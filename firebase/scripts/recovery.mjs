@@ -47,7 +47,9 @@ function dataset() {
   docs["subscriptions/userA"] = { uid: "userA", planId: "pro", status: "active" };
   return docs;
 }
-const digest = (docs) => createHash("sha256").update(JSON.stringify(Object.entries(docs).sort(([a], [b]) => a.localeCompare(b)))).digest("hex");
+// Serialização canônica (chaves ordenadas): o Firestore devolve os campos em ordem alfabética.
+const canon = (v) => (v && typeof v === "object" ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}` : JSON.stringify(v));
+const digest = (docs) => createHash("sha256").update(canon(docs)).digest("hex");
 
 async function snapshot(paths) {
   const out = {};

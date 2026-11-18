@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { say } from "./ai.suite";
 import type { BillingWorld } from "./billing.suite";
-import type { Client, Reply } from "./finance.suite";
+import type { Reply } from "./finance.suite";
 import { env, makeSigner, signToken, type Signer } from "./helpers";
 
 /**
