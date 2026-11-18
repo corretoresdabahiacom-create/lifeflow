@@ -122,3 +122,12 @@ Webhook (sem login): `POST /webhooks/mercadopago` — `401 invalid_signature`, `
 Administração (`/v1/admin/*`, exige claim `admin`; `403 admin_required` caso contrário; tudo auditado):
 `GET overview`, `GET|PUT plans[/{id}]`, `GET subscriptions[?plan&status&limit]`, `GET subscriptions/{uid}`,
 `GET usage[?month=AAAA-MM]`, `GET logs?kind=admin|webhooks`, `GET integrations`. Não existe rota de conteúdo financeiro.
+
+## Conta e operação (Fase 6)
+
+| Rota | Descrição |
+|---|---|
+| `GET /v1/account/export` | Todos os dados do próprio usuário em um JSON (`Content-Disposition: attachment`): perfil, preferências, consentimentos, contas, categorias, lançamentos, transferências, contas a pagar, recorrências, eventos, tarefas, lembretes, notificações, conversas e mensagens da IA, ações e logs da IA, consumo, pagamentos e assinatura (sem ids do provedor). Limite de 5000 documentos por coleção; `truncated` lista o que foi cortado |
+| `POST /v1/account/delete` | `{ "confirm": "EXCLUIR MINHA CONTA" }` → `200 { deleted, documents }`. `400` sem a frase exata; `401 recent_login_required` se o login tem mais de 5 min; cancela a cobrança antes (`502/503` do provedor abortam sem apagar). Idempotente |
+| `GET /healthz` | `200 {"status":"ok"}` (sem login) |
+| `GET /readyz` | `200 {"status":"ready"}` só com a configuração de produção completa; senão `503 {"status":"not_ready"}` (a lista do que falta vai ao log, nunca à resposta) |

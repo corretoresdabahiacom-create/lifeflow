@@ -183,3 +183,19 @@ Problema, Alternativas, Justificativa, Impacto, Aprovação.
 - **Upgrade imediato, downgrade na renovação;** preço novo vale na próxima cobrança (sem cobrança proporcional).
 - **Preços e limites configuráveis** em `plans/{id}` (padrões do contrato no código); Free não pode ter preço nem ser desativado.
 - **Premissas não verificadas:** manifesto do webhook, `free_trial`, índices de grupo no Firestore real.
+
+## D-010 — Exportação e exclusão de conta (Fase 6)
+
+- **Exclusão apaga tudo do usuário** (`users/{uid}/**` e `subscriptions/{uid}`), inclusive o que as regras impedem o
+  cliente de apagar (perfil, auditoria, consentimentos). Por isso usa um caminho privilegiado **preso ao uid do token**
+  (`UserErasure`), separado do `SystemDb` do painel (que não alcança conteúdo de usuário).
+- **Salvaguardas:** frase de confirmação exata, **login recente** (≤ 5 min), cancelamento da cobrança no provedor
+  **antes** de apagar (falha do provedor aborta sem apagar), operação idempotente (repetir é seguro).
+- **O login (Firebase Auth) é removido pelo cliente** (`deleteUser`) depois que os dados somem; se falhar, sobra um login
+  sem dados (nenhum dado pessoal além do e-mail, removível no console).
+- **Histórico de cobrança é apagado junto.** Obrigações fiscais podem exigir reter comprovantes; **decisão do operador**
+  (jurídico). Se for preciso reter, anonimizar em vez de apagar `billingPayments` — hoje não há rotina para isso.
+- **Exportação é cópia ao titular, não backup:** JSON único com limite de 5000 documentos por coleção (`truncated`
+  informa o corte); sem identificadores internos do provedor.
+- **Backups antigos contêm dados de quem já excluiu a conta**; ver `BACKUP_RECOVERY.md` (reaplicar exclusões, limitar retenção).
+- Alternativa descartada: `delete: true` nas regras para o cliente — deixaria o cliente apagar a trilha de auditoria.

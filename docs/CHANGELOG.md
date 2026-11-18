@@ -2,6 +2,14 @@
 
 ## [Não lançado]
 
+### Fase 6 — Lançamento (2026-11-18)
+- Auditoria (`AUDIT_PHASE_06.md`); dependências de produção corrigidas (zod 4, react-router 7, grpc-js).
+- **Exportação completa dos dados** e **exclusão de conta** (LGPD): API, tela em Ajustes, `UserErasure` preso ao uid. D-010.
+- Testes de **segurança** e **isolamento** em todos os módulos; `/readyz`; Firestore falso mais fiel (ordenação com desigualdade).
+- **Recuperação:** teste export → perda total → import no emulador; scripts de backup/restauração; workflows de deploy e backup.
+- Documentação: `RUNBOOK.md`, `BACKUP_RECOVERY.md`, `PRODUCTION_CHECKLIST.md`.
+- **Nada foi implantado nem testado contra serviços reais**; backup de produção e deploy nunca executados.
+
 ### Fase 5 — SaaS (2026-11-12)
 - Planos Free/Pro/Premium AI configuráveis; assinatura (checkout, troca, cancelamento, sincronização), pagamentos e
   histórico; **limites de IA agora vêm da assinatura** (`AI_DEFAULT_PLAN` removida).

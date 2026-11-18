@@ -1,30 +1,30 @@
 # DEPLOYMENT
 
-> Estado (Fase 1): nenhum deploy realizado. Esta página descreve o plano e o que já existe.
+> Estado (Fase 6): **nenhum deploy foi realizado** (não há contas Cloudflare/Firebase/Mercado Pago). Os workflows e
+> scripts abaixo foram escritos e validados apenas quanto à sintaxe e, no caso do Worker, rodando-o localmente.
 
 ## O que existe
 
-- CI (`.github/workflows/ci.yml`): job `verify` (install, lint, typecheck, test, build) e job
-  `firestore-rules` (emulador). Roda em `develop`, `main` e pull requests. Não faz deploy.
-- Build do frontend em `apps/web/dist` (Cloudflare Pages) e do Worker via `wrangler`.
+- **CI** (`.github/workflows/ci.yml`): `verify` (lint, typecheck, test, build) e `firestore-rules` (regras, integração
+  com o emulador e teste de recuperação). Não faz deploy.
+- **Deploy** (`.github/workflows/deploy.yml`): manual (`workflow_dispatch`), escolhe `staging` ou `production`;
+  produção só a partir de `main`; reexecuta toda a verificação; publica regras/índices → Worker → Pages; roda
+  `scripts/smoke.sh`. **Nunca executado.**
+- **Backup** (`.github/workflows/backup.yml`): exportação diária do Firestore, só com `BACKUP_ENABLED=true`. **Nunca executado.**
+- **Scripts:** `scripts/smoke.sh` (verificação pós-deploy), `scripts/backup-firestore.sh`, `scripts/restore-firestore.sh`.
+- **Worker local:** `pnpm --filter @lifeflow/api exec wrangler dev --local` roda o Worker real (workerd); foi usado para
+  conferir `/healthz`, `/readyz`, 401 sem token, CORS e webhook sem assinatura.
 
-## Plano
+## Passo a passo
 
-- Ambientes: desenvolvimento, staging e produção, cada um com seu projeto Firebase.
-- Sem deploy automático em produção com testes críticos falhando.
-- Branches: `develop` para trabalho, `main` protegida (ativar a proteção no GitHub).
+Ver [`RUNBOOK.md`](RUNBOOK.md) (primeiro deploy, rollback, monitoramento, incidentes) e
+[`PRODUCTION_CHECKLIST.md`](PRODUCTION_CHECKLIST.md) (go/no-go). Variáveis e secrets: [`ENVIRONMENT.md`](ENVIRONMENT.md).
 
-## Antes do primeiro deploy
+## Ambientes
 
-1. Criar o projeto Firebase, habilitar Auth por e-mail/senha e criar o app web.
-2. Publicar as regras: `firebase deploy --only firestore:rules,firestore:indexes` (a partir de `firebase/`).
-3. Worker: ajustar `FIREBASE_PROJECT_ID` e `ALLOWED_ORIGIN` em `workers/api/wrangler.toml`; `wrangler deploy`.
-4. Pages: definir as variáveis `VITE_*` (ver `ENVIRONMENT.md`) e o comando de build `pnpm --filter @lifeflow/web build`.
-5. Em `apps/web/public/_headers`, trocar `https://*.workers.dev` pela URL real do Worker na CSP.
-6. Adicionar a origem do Pages aos domínios autorizados do Firebase Auth.
+Desenvolvimento (emuladores), **staging** e **produção**, cada um com seu projeto Firebase. Sem deploy automático em
+produção; sem deploy com testes críticos falhando (o workflow reexecuta tudo).
 
 ## Backup e recuperação
 
-Ainda não implementado. Firestore não tem backup automático garantido no plano gratuito; será
-documentado e testado (exportação periódica, restauração e teste de restauração) antes do lançamento
-(Fase 6). Backup só é válido depois de restauração testada.
+Ver [`BACKUP_RECOVERY.md`](BACKUP_RECOVERY.md). Backup só é válido depois de restauração testada em staging.

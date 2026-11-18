@@ -25,10 +25,10 @@ prompts sem necessidade.
 | Exportação CSV sem injeção de fórmulas; token só em cabeçalho | Implementado e testado |
 | Livro-razão sem exclusão (estorno em vez de delete) | Implementado nas regras |
 | Garantia de que saldo = lançamentos contra cliente mal-intencionado | **Parcial**: regras não provam; há conciliação (`/v1/reconcile`); ver D-006 |
-| Rate limiting | **Pendente** (fases seguintes) |
-| Auditoria (`audit_logs`) | **Pendente** (fases seguintes) |
-| Endpoints administrativos | **Pendente** (Fase 5) |
-| Proteção contra prompt injection | **Pendente** (Fase 4) |
+| Rate limiting | **Aberto (A4)**: não existe no Worker; regra de borda do Cloudflare obrigatória antes do lançamento (`RUNBOOK.md`) |
+| Auditoria | Implementada: `aiLogs` (IA) e `adminLogs` (painel admin), só de inclusão |
+| Endpoints administrativos | Implementado (Fase 5): claim `admin` + auditoria |
+| Proteção contra prompt injection | Implementada e testada com modelo simulado (Fase 4) |
 
 ## Regras de repositório
 
@@ -92,3 +92,23 @@ Não afirmar conformidade com a LGPD sem revisão jurídica e operacional.
   conteúdo de usuários. Conceder a claim é passo manual do dono do projeto.
 - **Segredos:** token do Mercado Pago, segredo do webhook e conta de serviço só como secrets; o painel mostra apenas "configurado".
 - **Risco aceito:** a conta de serviço ignora as Security Rules; a proteção é o código do `SystemDb`, coberto por testes.
+
+## Lançamento (Fase 6)
+
+Auditoria completa em [`AUDIT_PHASE_06.md`](AUDIT_PHASE_06.md). Resumo do que mudou:
+
+- **Dependências:** zod 4, react-router 7 e override do `@grpc/grpc-js`; resta 1 aviso do `firebase` (provável falso
+  positivo) e avisos só de desenvolvimento.
+- **Exclusão de conta e exportação (LGPD):** `POST /v1/account/delete` exige a frase de confirmação **e login recente**
+  (≤ 5 min, `auth_time` do token); cancela a cobrança no provedor **antes** de apagar (se falhar, nada é apagado);
+  `UserErasure` é o único trecho privilegiado que alcança conteúdo de usuário e está **preso ao uid do solicitante**
+  (`users/{uid}/**` e `subscriptions/{uid}`). `GET /v1/account/export` devolve todos os dados do próprio usuário.
+- **Testes de segurança** (HTTP): toda rota `/v1` exige token válido; tokens expirados/forjados/audiência errada;
+  uid só do token; CORS; cabeçalhos; ids de travessia de caminho; corpos malformados/grandes/campos extras; injeção de
+  campos protegidos (saldo, status, origem, plano); **logs sem token, descrições, mensagens nem valores**; erro interno
+  genérico.
+- **Testes de isolamento** (todos os módulos, inclusive com as regras reais no emulador): B não lê, altera, apaga nem
+  confirma nada de A; não usa a conta de A para lançar/transferir/pagar; a IA de B nunca recebe dados de A; assinatura
+  e pagamentos invisíveis; painel admin inacessível a usuário comum.
+- **Prontidão:** `/readyz` só devolve 200 com configuração de produção completa; público só vê o veredito.
+- **Limites desta fase:** sem pentest, sem revisão jurídica, nada testado contra serviços reais.

@@ -16,7 +16,15 @@
 | `pnpm test` | Vitest: `shared`, `web` (jsdom), `api` (Worker com Firestore falso; exclui os testes de integração) |
 | `pnpm build` | build do frontend (Vite) e do Worker (`wrangler --dry-run`) |
 | `pnpm test:rules` | Security Rules no emulador do Firestore (exige Java 17+ e acesso a `storage.googleapis.com`) |
-| `pnpm test:integration` | Mesma suíte financeira do Worker contra o emulador real, com as regras reais (mesmos requisitos) |
+| `pnpm test:integration` | Suítes do Worker (financeiro, agenda, IA, SaaS, conta, segurança/isolamento) contra o emulador real, com as regras reais (mesmos requisitos) |
+| `pnpm --filter @lifeflow/firebase-rules test:recovery` | Recuperação: semeia → exporta (backup) → emulador vazio → importa → confere documento a documento (só na CI) |
+
+## Estado (Fase 6)
+
+Resultados em `PHASE_06_LAUNCH.md`. Novas suítes (rodam no Firestore falso e no emulador real): `account.suite.ts`
+(exportação e exclusão de conta) e `security.suite.ts` (segurança HTTP e isolamento entre usuários em todos os módulos);
+`ops.test.ts` (saúde, prontidão e formato dos logs); `firebase/scripts/recovery-test.sh` (recuperação).
+O Firestore falso passou a recusar filtro de desigualdade sem ordenação pelo mesmo campo (regra do Firestore real).
 
 ## Estado (Fase 3)
 

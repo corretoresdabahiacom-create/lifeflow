@@ -52,3 +52,18 @@ foram substituídas por estas.
 | `API_PUBLIC_URL` | var | URL pública do Worker (notificação: `/webhooks/mercadopago`) |
 
 `AI_DEFAULT_PLAN` foi **removida**: o plano vem da assinatura. A claim `admin` é definida no Firebase Auth, não aqui.
+
+## Variáveis do deploy (Fase 6, `.github/workflows/deploy.yml`)
+
+Por ambiente do GitHub (`staging`, `production`):
+
+| Nome | Tipo | Uso |
+|---|---|---|
+| `FIREBASE_PROJECT_ID`, `WEB_BASE_URL`, `API_PUBLIC_URL`, `PAGES_PROJECT` | variável | Worker (`--var`) e Pages |
+| `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_APP_ID` | variável (públicas) | build do app web |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | secret | `wrangler deploy` / `pages deploy` |
+| `FIREBASE_DEPLOY_SA_JSON` | secret | publicar regras e índices |
+| `BACKUP_SA_JSON` (secret), `BACKUP_BUCKET`, `BACKUP_ENABLED` (variáveis) | backup diário | `backup.yml` |
+
+Secrets do **Worker** (nunca no GitHub nem no Git): `GOOGLE_SERVICE_ACCOUNT_JSON`, `DEEPSEEK_API_KEY`, `GROQ_API_KEY`,
+`MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_WEBHOOK_SECRET` (`wrangler secret put`). `GET /readyz` confere se estão presentes.
