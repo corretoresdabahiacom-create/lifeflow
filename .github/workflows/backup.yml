@@ -1,0 +1,28 @@
+name: Backup do Firestore
+
+# Backup diário gerenciado (exportação para o Cloud Storage). Só roda se a variável do repositório
+# BACKUP_ENABLED for "true" — ligue DEPOIS de criar o bucket e o ensaio de restauração (docs/BACKUP_RECOVERY.md).
+# ATENÇÃO: NUNCA foi executado contra um projeto real.
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    if: vars.BACKUP_ENABLED == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.BACKUP_SA_JSON }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: bash scripts/backup-firestore.sh
+        env:
+          GCP_PROJECT: ${{ vars.FIREBASE_PROJECT_ID }}
+          BACKUP_BUCKET: ${{ vars.BACKUP_BUCKET }}

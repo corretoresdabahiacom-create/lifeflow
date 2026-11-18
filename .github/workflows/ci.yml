@@ -51,3 +51,7 @@ jobs:
       - run: pnpm test:integration
         env:
           FIREBASE_TELEMETRY_COLLECTION_ENABLED: "false"
+      # Recuperação: backup (export) -> perda total -> restauração (import) -> conferência documento a documento.
+      - run: pnpm --filter @lifeflow/firebase-rules test:recovery
+        env:
+          FIREBASE_TELEMETRY_COLLECTION_ENABLED: "false"

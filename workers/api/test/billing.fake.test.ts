@@ -5,6 +5,7 @@ import { env, fakeFirestore, makeApp, signToken, uidOfToken, type Clock, type Si
 import { createSystemDb } from "../src/system";
 import { FirestoreClient } from "../src/firestore";
 import { defineAccountSuite } from "./account.suite";
+import { defineSecuritySuite } from "./security.suite";
 
 async function fakeWorld(signer: Signer, options: BillingWorldOptions): Promise<BillingWorld> {
   const fake = fakeFirestore();
@@ -39,3 +40,5 @@ async function fakeWorld(signer: Signer, options: BillingWorldOptions): Promise<
 defineBillingSuite("assinaturas, limites e painel admin (Firestore falso em memória)", fakeWorld, { fake: true });
 
 defineAccountSuite("exportação e exclusão de conta (Firestore falso em memória)", fakeWorld, { rawClient: (w) => w.raw });
+
+defineSecuritySuite("segurança e isolamento entre usuários (Firestore falso em memória)", fakeWorld);

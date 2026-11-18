@@ -38,6 +38,19 @@ export interface AppDeps {
   payments?: PaymentProvider;
 }
 
+/** Itens indispensáveis para operar em produção. Vazio = pronto. (Emulador/testes via FIRESTORE_BASE_URL ficam isentos.) */
+export function readinessProblems(env: Env): string[] {
+  const problems: string[] = [];
+  if (!env.FIREBASE_PROJECT_ID || env.FIREBASE_PROJECT_ID.startsWith("demo-")) problems.push("firebase_project");
+  if (!/^https:\/\//.test(env.ALLOWED_ORIGIN)) problems.push("allowed_origin_https");
+  if (env.FIRESTORE_BASE_URL) problems.push("firestore_base_url_override");
+  if (!env.GOOGLE_SERVICE_ACCOUNT_JSON) problems.push("service_account");
+  if (!env.MERCADOPAGO_ACCESS_TOKEN || !env.MERCADOPAGO_WEBHOOK_SECRET) problems.push("payments");
+  if (!env.WEB_BASE_URL || !env.API_PUBLIC_URL) problems.push("public_urls");
+  if (!env.DEEPSEEK_API_KEY) problems.push("llm");
+  return problems;
+}
+
 export function createHandler(deps: AppDeps = {}) {
   const now = deps.now ?? (() => new Date());
   const resolveKeys = deps.keyResolver ?? defaultKeyResolver;
@@ -71,6 +84,16 @@ export function createHandler(deps: AppDeps = {}) {
       if (url.pathname === "/healthz") {
         if (request.method !== "GET") throw new HttpError(405, "method_not_allowed", "Método não permitido");
         return finish(json({ status: "ok" }));
+      }
+      if (url.pathname === "/readyz") {
+        // Prontidão para produção: só o veredito (sem detalhes públicos); os detalhes vão para o log e o painel admin.
+        if (request.method !== "GET") throw new HttpError(405, "method_not_allowed", "Método não permitido");
+        const problems = readinessProblems(env);
+        if (problems.length > 0) {
+          log("warn", "not_ready", { ...base, problems: problems.join(",") });
+          return finish(json({ status: "not_ready" }, 503), "not_ready");
+        }
+        return finish(json({ status: "ready" }));
       }
       if (url.pathname === "/webhooks/mercadopago") {
         return finish(await handleWebhook(request, url, { env, fetchImpl: deps.fetchImpl ?? fetch, ...(deps.payments ? { payments: deps.payments } : {}) }, now));

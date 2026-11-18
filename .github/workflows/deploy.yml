@@ -1,0 +1,109 @@
+name: Deploy
+
+# Deploy MANUAL e com aprovação (proteção do "environment" no GitHub). Produção só a partir de `main`.
+# ATENÇÃO: este workflow NUNCA foi executado (não havia contas Cloudflare/Firebase). Faça o primeiro deploy em staging.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Ambiente de destino"
+        type: choice
+        options: [staging, production]
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: verificação completa antes do deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Produção só sai de main
+        if: inputs.environment == 'production' && github.ref != 'refs/heads/main'
+        run: |
+          echo "Deploy de produção só é permitido a partir da branch main." >&2
+          exit 1
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:rules
+        env:
+          FIREBASE_TELEMETRY_COLLECTION_ENABLED: "false"
+      - run: pnpm test:integration
+        env:
+          FIREBASE_TELEMETRY_COLLECTION_ENABLED: "false"
+
+  deploy:
+    name: deploy (${{ inputs.environment }})
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_DEPLOY_SA_JSON }}
+      FIREBASE_TELEMETRY_COLLECTION_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # 1) Regras e índices do Firestore PRIMEIRO: o Worker novo depende deles.
+      - name: Regras e índices do Firestore
+        run: |
+          printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          cd firebase
+          pnpm exec firebase deploy --only firestore:rules,firestore:indexes --project "${{ vars.FIREBASE_PROJECT_ID }}" --non-interactive
+          rm -f "$RUNNER_TEMP/sa.json"
+
+      # 2) API (Worker). Segredos (chaves de IA, Mercado Pago, conta de serviço) ficam no Cloudflare:
+      #    `wrangler secret put <NOME>` — nunca neste arquivo (ver docs/DEPLOYMENT.md).
+      - name: Worker da API
+        working-directory: workers/api
+        run: >
+          pnpm exec wrangler deploy
+          --var FIREBASE_PROJECT_ID:${{ vars.FIREBASE_PROJECT_ID }}
+          --var ALLOWED_ORIGIN:${{ vars.WEB_BASE_URL }}
+          --var WEB_BASE_URL:${{ vars.WEB_BASE_URL }}
+          --var API_PUBLIC_URL:${{ vars.API_PUBLIC_URL }}
+
+      # 3) App web (Cloudflare Pages).
+      - name: Build do app web
+        run: pnpm --filter @lifeflow/web build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+          VITE_API_BASE_URL: ${{ vars.API_PUBLIC_URL }}
+      - name: Publicar no Cloudflare Pages
+        run: pnpm --filter @lifeflow/web exec wrangler pages deploy dist --project-name "${{ vars.PAGES_PROJECT }}" --branch "${{ inputs.environment == 'production' && 'main' || 'staging' }}"
+
+      # 4) Verificação pós-deploy: se falhar, reverter (docs/RUNBOOK.md, "Rollback").
+      - name: Smoke test
+        run: bash scripts/smoke.sh "${{ vars.API_PUBLIC_URL }}" "${{ vars.WEB_BASE_URL }}"
