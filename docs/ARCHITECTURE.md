@@ -51,10 +51,10 @@ Todas as coleções pessoais ficam sob `users/{uid}`; a regra de propriedade é 
 |---|---|
 | Supabase Auth (frontend) | Código implementado; sem projeto real configurado |
 | Validação de JWT do Supabase no Worker | Código implementado e testado com mocks (chaves geradas nos testes) |
-| Banco via PostgREST (Worker) | Testado contra Postgres real (PGlite) com PostgREST emulado; contra o PostgREST/GoTrue reais **não executado** (só na CI, ainda sem rodar) |
+| Banco via PostgREST (Worker) | Testado contra Postgres real (PGlite) com PostgREST emulado; contra o PostgREST/GoTrue reais (`supabase start`): 186 testes aprovados na CI (CI run 45264674894); Supabase hospedado: não usado |
 | RLS, gatilhos e funções `lf_*` | Migrações escritas; 44 testes (RLS, API) aprovados em Postgres local (PGlite) |
-| Módulo financeiro (Worker + banco) | Implementado; suíte de API aprovada no Postgres local (PGlite); Supabase real: não executado |
-| Módulo de agenda (Worker + banco) | Implementado; suíte de API aprovada no Postgres local (PGlite); Supabase real: não executado |
+| Módulo financeiro (Worker + banco) | Implementado; suíte de API aprovada no PGlite e no Supabase local real (CI); hospedado: não usado |
+| Módulo de agenda (Worker + banco) | Implementado; suíte de API aprovada no PGlite e no Supabase local real (CI); hospedado: não usado |
 | Notificações da agenda | Geradas sob demanda pelo app aberto; sem agendador |
 | DeepSeek (LLM) | Não implementado |
 | Groq (transcrição) | Não implementado |

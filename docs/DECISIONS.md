@@ -244,6 +244,6 @@ necessária**. Se houvesse, o caminho seria exportar o Firestore e inserir via `
   e os 264 testes do Worker (finanças, agenda, IA, cobrança, conta, segurança) contra esse Postgres, por um PostgREST **emulado**.
 - **Não** testado localmente: verificação da assinatura do JWT pelo PostgREST, GoTrue (cadastro/login/`amr`), formato exato dos cabeçalhos,
   `supabase db push`, `pg_dump`/`pg_restore` reais e qualquer Supabase hospedado. A suíte `pnpm test:integration` (CI, `supabase start`) foi
-  escrita para cobrir isso, mas **ainda não rodou**.
+  escrita para cobrir isso e **rodou na CI (CI run 45264674894): 186 aprovados, 5 pulados** (os pulados são testes que forjam token e só valem no modo falso). Antes disso, a 1ª e a 2ª execuções falharam por configuração (chave de assinatura, chave `min_password_length` inexistente, `pg_restore` sem superusuário, login por telefone) e por testes que assumiam o modo falso; tudo corrigido. Continua **não** testado: qualquer Supabase hospedado, `supabase db push` e `pg_dump` de produção.
 - Foram removidos os 137 testes das antigas Security Rules; a cobertura equivalente agora são os testes de RLS/gatilhos (`supabase/tests`)
   e os de isolamento do Worker. A contagem total mudou porque os cenários foram reorganizados, não porque algo deixou de ser verificado.

@@ -7,7 +7,7 @@ proteção XSS/CSRF/injeção, secrets apenas em ambiente, auditoria, gestão de
 de endpoints administrativos, proteção contra prompt injection, sem dados financeiros em
 prompts sem necessidade.
 
-> **D-011 (2026-11-23): banco e login migraram do Firebase para o Supabase.** As linhas abaixo que citam Security Rules/Firestore/emulador são históricas; o equivalente atual é a RLS + gatilhos (`supabase/migrations`, 44 testes em Postgres local). A verificação do JWT pelo PostgREST/GoTrue reais e a RLS sob `supabase start` **ainda não foram executadas** (só na CI).
+> **D-011 (2026-11-23): banco e login migraram do Firebase para o Supabase.** As linhas abaixo que citam Security Rules/Firestore/emulador são históricas; o equivalente atual é a RLS + gatilhos (`supabase/migrations`, 44 testes em Postgres local). A verificação do JWT pelo PostgREST/GoTrue reais e a RLS sob `supabase start` rodaram **só na CI** (CI run 45264674894: 186 testes de integração aprovados); nenhum projeto Supabase hospedado foi usado.
 
 ## Estado (Fases 1 e 2)
 

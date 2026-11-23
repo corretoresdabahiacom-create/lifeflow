@@ -17,7 +17,7 @@
 | `pnpm build` | build do frontend (Vite) e do Worker (`wrangler --dry-run`) |
 | `pnpm test:rules` | apenas os testes do banco (`@lifeflow/db`): RLS, gatilhos, CHECKs e funções `lf_*` |
 | `pnpm test:integration` | Suítes do Worker (financeiro, agenda, IA, SaaS, conta, segurança) contra o **Supabase real local** (`supabase start`: GoTrue + PostgREST + RLS). Exige Docker e a Supabase CLI. **Só na CI** |
-| `pnpm db:recovery` | Recuperação: semeia → `pg_dump` → perda total → `pg_restore` → compara (exige Docker; só na CI) |
+| `pnpm db:recovery` | Recuperação: semeia → `pg_dump` → perda total → `pg_restore` → compara (exige Docker; rodado só na CI, aprovado) |
 
 ## Estado (migração para o Supabase, D-011 — 2026-11-23)
 
@@ -38,9 +38,9 @@ O que a suíte local prova e o que **não** prova:
   campos imutáveis, transições, tabelas só de inclusão, DELETE proibido, tabelas só de serviço, `service_role`.
 - O Worker é testado por `finance`/`agenda`/`ai`/`billing`/`account`/`security` `.suite.ts` (as mesmas suítes de antes) com `fakeSupabase()` em
   `workers/api/test/helpers.ts`; tokens de teste têm o formato do Supabase (`iss`, `aud=authenticated`, `role`, `app_metadata`, `amr`).
-- **NÃO coberto localmente:** verificação criptográfica do JWT pelo PostgREST, GoTrue (cadastro, login, `amr` real), cabeçalhos HTTP reais,
+- **Só coberto na CI (não localmente):** verificação criptográfica do JWT pelo PostgREST, GoTrue (cadastro, login, `amr` real), cabeçalhos HTTP reais,
   chaves `sb_*`, `supabase db push`, `pg_dump`/`pg_restore` reais, Supabase hospedado. Isso depende da CI (`pnpm test:integration`,
-  `pnpm db:recovery`), escritas mas **ainda não executadas**. Tratar a migração como "implementada e testada localmente", não como "validada".
+  `pnpm db:recovery`), rodadas **apenas na CI** (CI run 45264674894): integração 186 aprovados / 5 pulados; recuperação OK. Nunca rodadas numa máquina de desenvolvimento nem contra um Supabase hospedado.
 - Testes que forjam um token com `amr` antigo (login recente) rodam só no mundo local, pois o GoTrue real assina o próprio token.
 
 ## Estado (Fase 6, histórico: Firestore)

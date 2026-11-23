@@ -42,7 +42,7 @@ pnpm typecheck
 pnpm test          # unitários e Worker (mocks)
 pnpm build
 pnpm test:rules    # testes do banco (RLS/gatilhos/funções) em Postgres local, sem Docker
-pnpm test:integration  # Worker contra o Supabase local real (Docker + Supabase CLI; só na CI por ora)
+pnpm test:integration  # Worker contra o Supabase local real (Docker + Supabase CLI; rodado na CI)
 ```
 
 ## Fluxo de branches

@@ -7,7 +7,8 @@
 - Worker: `firestore.ts` → `db.ts` (mesma interface de documentos, agora RPC com o JWT do usuário); `service_role` só para `SystemDb` e `lf_erase_user`. Front: `@supabase/supabase-js` só para login; `firebase` removido.
 - Testes: 137 testes de Security Rules removidos; 44 testes de RLS/API do banco (PGlite) adicionados; suíte do Worker roda em Postgres local. Total local: 498.
 - CI/deploy/backup: `supabase-integration`, `supabase-recovery`, `supabase db push`, `pg_dump`. Scripts `backup-db`/`restore-db`.
-- **Não executado:** projeto Supabase real, `supabase start`/GoTrue/PostgREST reais, `supabase db push`, pg_dump/pg_restore, jobs novos da CI. Nenhum dado foi migrado (não havia dados reais).
+- **Na CI (CI run 45264674894):** integração com GoTrue/PostgREST reais (`supabase start`) 186 aprovados/5 pulados; recuperação pg_dump→pg_restore OK. Foram necessárias 3 correções após a 1ª execução.
+- **Não executado:** projeto Supabase hospedado, `supabase db push`, deploy. Nenhum dado foi migrado (não havia dados reais).
 
 ### Fase 6 — Lançamento (2026-11-18)
 - Auditoria (`AUDIT_PHASE_06.md`); dependências de produção corrigidas (zod 4, react-router 7, grpc-js).

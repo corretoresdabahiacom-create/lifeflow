@@ -6,7 +6,7 @@
 ## O que existe
 
 - **CI** (`.github/workflows/ci.yml`): `verify` (lint, typecheck, test com Postgres local, build), `supabase-integration` (suítes do Worker contra `supabase start`)
-  e `supabase-recovery` (pg_dump → perda → pg_restore). Os dois últimos **ainda não rodaram**. Não faz deploy.
+  e `supabase-recovery` (pg_dump → perda → pg_restore). Os dois últimos rodaram na CI e passaram (CI run 45264674894); `db push`/deploy reais nunca foram executados. Não faz deploy.
 - **Deploy** (`.github/workflows/deploy.yml`): manual (`workflow_dispatch`), escolhe `staging` ou `production`;
   produção só a partir de `main`; reexecuta toda a verificação; aplica as migrações (`supabase db push`) → Worker → Pages; roda
   `scripts/smoke.sh`. **Nunca executado.**

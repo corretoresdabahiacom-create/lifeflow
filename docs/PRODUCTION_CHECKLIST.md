@@ -8,7 +8,7 @@ Legenda: ✅ verificado por teste automatizado (ambiente de teste) · 🔶 escri
 |---|---|---|
 | Cadastro | 🔶 componentes e `AuthProvider` com mocks | ⬜ |
 | Login | 🔶 idem; token validado no Worker ✅ | ⬜ |
-| Operações financeiras | ✅ 35 testes de API contra o Postgres local (PGlite) + testes de RLS; ⬜ contra o Supabase real (CI, ainda não rodou) | ⬜ |
+| Operações financeiras | ✅ 35 testes de API contra o Postgres local (PGlite) + testes de RLS; ✅ no Supabase local real (CI); ⬜ hospedado | ⬜ |
 | Agenda | ✅ 47 testes de API (PGlite) + RLS; ⬜ Supabase real (CI) | ⬜ |
 | IA | 🔶 modelo simulado; prompt injection ✅ | ⬜ (DeepSeek/Groq reais nunca chamados) |
 | Assinaturas | 🔶 provedor simulado + HMAC real | ⬜ (Mercado Pago real nunca chamado) |
@@ -16,7 +16,7 @@ Legenda: ✅ verificado por teste automatizado (ambiente de teste) · 🔶 escri
 | Mobile | ⬜ | ⬜ testar em celulares reais |
 | Exportação | ✅ CSV e JSON completo | ⬜ |
 | Exclusão de conta | ✅ API (PGlite) e tela | ⬜ incluindo a remoção real do usuário no Supabase Auth (`lf_erase_user`) |
-| Restauração de backup | 🔶 script escrito (`pnpm db:recovery`), ainda não executado | ⬜ backup gerenciado + ensaio em staging |
+| Restauração de backup | ✅ `pnpm db:recovery` aprovado na CI (pilha local) | ⬜ backup gerenciado + ensaio em staging |
 
 ## Testes obrigatórios da Fase 6
 

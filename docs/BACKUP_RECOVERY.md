@@ -8,7 +8,7 @@
 
 | Item | Estado |
 |---|---|
-| Mecanismo `pg_dump` → perda total → `pg_restore` → conferência (pilha local) | **Escrito (`supabase/scripts/recovery-test.sh`, `pnpm db:recovery`, job `supabase-recovery` da CI), ainda não executado** |
+| Mecanismo `pg_dump` → perda total → `pg_restore` → conferência (pilha local) | **Executado e aprovado na CI contra o `supabase start` local (CI run 45264674894): `supabase/scripts/recovery-test.sh`, `pnpm db:recovery`, job `supabase-recovery`.** Não é um backup de produção** |
 | Backup de produção (`scripts/backup-db.sh`, `.github/workflows/backup.yml`) | **Escrito, nunca executado** (não há projeto Supabase real) |
 | Restauração (`scripts/restore-db.sh`) | **Escrita, nunca executada**; recusa banco de destino não vazio |
 | Ensaio de restauração em staging com dados reais | **Pendente** — obrigatório antes do lançamento |
