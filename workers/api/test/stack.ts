@@ -44,11 +44,11 @@ async function json(response: Response): Promise<Record<string, unknown>> {
 /** Cadastra (via API de administração do GoTrue) e autentica um usuário novo; devolve o JWT REAL. */
 export async function createStackUser(
   label: string,
-  options: { admin?: boolean; email?: string; /** Usuário só com telefone: o JWT não traz `email`. */ noEmail?: boolean } = {},
+  options: { admin?: boolean; email?: string; /** Usuário anônimo: o JWT não traz `email`. */ noEmail?: boolean } = {},
 ): Promise<StackUser> {
   const email = options.email ?? `${label}-${crypto.randomUUID().slice(0, 8)}@example.com`;
-  const phone = `+5571${String(Math.floor(Math.random() * 1e9)).padStart(9, "9")}`;
-  const identity = options.noEmail ? { phone } : { email };
+  if (options.noEmail) return createAnonymousStackUser();
+  const identity = { email };
   const created = await json(
     await fetch(`${url}/auth/v1/admin/users`, {
       method: "POST",
@@ -56,7 +56,7 @@ export async function createStackUser(
       body: JSON.stringify({
         ...identity,
         password: PASSWORD,
-        ...(options.noEmail ? { phone_confirm: true } : { email_confirm: true }),
+        email_confirm: true,
         ...(options.admin ? { app_metadata: { admin: true } } : {}),
       }),
     }),
@@ -68,7 +68,20 @@ export async function createStackUser(
       body: JSON.stringify({ ...identity, password: PASSWORD }),
     }),
   );
-  return { uid: String(created["id"]), email: options.noEmail ? "" : email, token: String(session["access_token"]) };
+  return { uid: String(created["id"]), email, token: String(session["access_token"]) };
+}
+
+/** Usuário ANÔNIMO do GoTrue: o JWT real não traz `email` (cobre o caso "sem e-mail" sem depender de provedor de SMS). */
+async function createAnonymousStackUser(): Promise<StackUser> {
+  const session = await json(
+    await fetch(`${url}/auth/v1/signup`, {
+      method: "POST",
+      headers: { apikey: publishable as string, "Content-Type": "application/json" },
+      body: "{}",
+    }),
+  );
+  const user = session["user"] as { id: string };
+  return { uid: user.id, email: "", token: String(session["access_token"]) };
 }
 
 /** Cliente com a chave secreta (preparação/inspeção dos testes), como o caminho privilegiado do Worker. */

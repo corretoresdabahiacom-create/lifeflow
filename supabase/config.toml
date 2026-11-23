@@ -27,6 +27,7 @@ jwt_expiry = 3600
 minimum_password_length = 8
 enable_refresh_token_rotation = true
 enable_signup = true
+enable_anonymous_sign_ins = true
 # JWTs ASSIMÉTRICOS (ES256): o Worker valida pela JWKS e recusa HS256 de propósito. O arquivo é gerado por
 # `supabase/scripts/gen-signing-key.sh` e NÃO é versionado.
 signing_keys_path = "./signing_keys.json"

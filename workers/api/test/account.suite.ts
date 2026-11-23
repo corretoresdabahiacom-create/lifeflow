@@ -220,9 +220,16 @@ export function defineAccountSuite(
       expect(((await late.json()) as { status: string }).status).toBe("ignored");
       expect(await options.rawClient(w).get(`subscriptions/${w.uidA}`)).toBeNull();
       expect((await w.A.get("/v1/billing/subscription")).body["subscription"]).toMatchObject({ status: "none", plan: "free" });
-      // Recomeçar: perfil novo, sem rastro do anterior.
-      expect((await w.A.put("/v1/profile", { displayName: "Ana nova", locale: "pt-BR", timezone: "America/Sao_Paulo", currency: "BRL" })).status).toBe(200);
-      expect(JSON.parse((await exportOf(w.A)).text).data.transactions).toEqual([]);
+      const restart = await w.A.put("/v1/profile", { displayName: "Ana nova", locale: "pt-BR", timezone: "America/Sao_Paulo", currency: "BRL" });
+      if (options.fake) {
+        // Recomeçar: perfil novo, sem rastro do anterior.
+        expect(restart.status).toBe(200);
+        expect(JSON.parse((await exportOf(w.A)).text).data.transactions).toEqual([]);
+      } else {
+        // Supabase real: o login foi APAGADO; o JWT antigo não consegue recriar dados (FK para auth.users). Recomeçar = novo cadastro (novo uid).
+        expect(restart.status, restart.text).toBe(403);
+        expect(await options.rawClient(w).get(`users/${w.uidA}`)).toBeNull();
+      }
     });
 
     it("a exclusão fica presa ao uid do solicitante (o caminho privilegiado recusa qualquer outro caminho)", async () => {
