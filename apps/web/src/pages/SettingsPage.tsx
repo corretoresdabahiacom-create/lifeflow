@@ -213,7 +213,7 @@ export const DELETE_PHRASE = "EXCLUIR MINHA CONTA";
 /** Meus dados (LGPD): exportação completa e exclusão definitiva da conta. */
 export function AccountSection() {
   const api = useApi();
-  const { reauthenticate, deleteAuthUser, signOut } = useAuth();
+  const { reauthenticate, signOut } = useAuth();
   const [notice, setNotice] = useState<Notice>(null);
   const [busy, setBusy] = useState(false);
   const [password, setPassword] = useState("");
@@ -260,12 +260,7 @@ export function AccountSection() {
       setBusy(false);
       return;
     }
-    // Os dados já foram apagados no servidor; remover o login é o último passo (e a sessão termina de qualquer forma).
-    try {
-      await deleteAuthUser();
-    } catch {
-      /* o login pode ficar órfão, mas sem nenhum dado */
-    }
+    // O Worker já apagou os dados E o login (usuário do Supabase Auth); resta encerrar a sessão neste navegador.
     await signOut().catch(() => undefined);
   }
 

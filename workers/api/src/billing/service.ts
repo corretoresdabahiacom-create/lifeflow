@@ -1,6 +1,6 @@
 import type { PlanConfig, PlanId } from "@lifeflow/shared";
 import { HttpError } from "../errors";
-import { PreconditionFailedError, type DocData } from "../firestore";
+import { PreconditionFailedError, type DocData } from "../db";
 import type { SystemDb } from "../system";
 import {
   PaymentProviderError,

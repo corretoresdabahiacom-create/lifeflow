@@ -6,8 +6,8 @@ import type { Client, Reply, World } from "./finance.suite";
 import { makeSigner, validPrefs, type Clock, type Signer } from "./helpers";
 
 /**
- * Suíte do assistente de IA (Fase 4). Mesmo código contra o Firestore falso (`pnpm test`) e contra o emulador
- * real com as Security Rules reais (`pnpm test:integration`, na CI). O modelo e a transcrição são SIMULADOS:
+ * Suíte do assistente de IA (Fase 4). Mesmo código contra o Supabase local (PGlite) (`pnpm test`) e contra o emulador
+ * real com as RLS real (`pnpm test:integration` (CI), na CI). O modelo e a transcrição são SIMULADOS:
  * seguem um roteiro, o que permite provar o comportamento do backend (inclusive diante de um modelo que
  * "obedece" uma injeção de prompt). Chamadas reais ao DeepSeek/Groq NÃO são testadas aqui.
  */
@@ -324,8 +324,11 @@ export function defineAiSuite(
       w.llm.script.push(call("create_transaction", txBody(acc.id)), say("ok"));
       const id = (reply(await ask(w.A, "gastei 50")).actions[0] as AiActionView).id;
       const uid = (await w.A.get("/v1/me")).body["uid"] as string;
-      const doc = w.fake!.docs.get(`users/${uid}/aiActions/${id}`)!;
-      doc["argsJson"] = String(doc["argsJson"]).replace("5000", "500000");
+      void uid;
+      // Os gatilhos do banco proíbem alterar os parâmetros pela API; aqui o "atacante" tem acesso direto (sem gatilhos).
+      await w.fake!.db.exec("alter table ai_actions disable trigger user");
+      await w.fake!.sql("update ai_actions set args_json = replace(args_json, '5000', '500000') where id = $1", [id]);
+      await w.fake!.db.exec("alter table ai_actions enable trigger user");
       const r = await confirm(w.A, id);
       expect((r.body.action as AiActionView).status).toBe("blocked");
       expect(await txList(w.A)).toHaveLength(0);
@@ -699,10 +702,11 @@ export function defineAiSuite(
       expect(w.stt.calls[0]?.mimeType).toBe("audio/webm");
       expect((await usageOf(w.A)).voiceSeconds).toBe(10);
       if (options.fake) {
-        const keys = [...w.fake!.docs.keys()];
-        expect(keys.some((k) => k.includes("audio") && !k.endsWith("consents/audio"))).toBe(false);
-        for (const data of w.fake!.docs.values()) {
-          expect(Object.values(data).some((v) => typeof v === "string" && v.length > 1500)).toBe(false);
+        // Nenhum áudio (nem texto longo que pudesse ser um) é guardado: só o consentimento `audio` existe.
+        const rows = await w.fake!.allRows();
+        expect(rows.some((r) => r.table !== "consents" && String(r.row["id"] ?? "").includes("audio"))).toBe(false);
+        for (const { row } of rows) {
+          expect(Object.values(row).some((v) => typeof v === "string" && v.length > 1500)).toBe(false);
         }
       }
       // O texto transcrito é só texto: segue o fluxo normal de confirmação.

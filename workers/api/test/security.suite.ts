@@ -6,7 +6,7 @@ import { env, makeSigner, signToken, type Signer } from "./helpers";
 
 /**
  * Fase 6 — testes de SEGURANÇA e ISOLAMENTO entre usuários, em todos os módulos.
- * Mesma suíte no Firestore falso e no emulador real (regras reais).
+ * Mesma suíte no Supabase local (PGlite) e no Supabase real (regras reais).
  */
 
 const code = (r: Reply) => (r.body["error"] as { code: string } | undefined)?.code;
@@ -189,7 +189,7 @@ export function defineSecuritySuite(
         w.fake.failNext(500, 500);
         const r = await w.A.get("/v1/accounts");
         expect(r.status).toBeGreaterThanOrEqual(500);
-        expect(r.text).not.toMatch(/at .*\.ts|stack|firestore\.googleapis|Error:/i);
+        expect(r.text).not.toMatch(/at .*\.ts|stack|supabase\.co\/rest|Error:/i);
         expect((r.body["error"] as { requestId: string }).requestId).toBeTruthy();
       }
     });

@@ -4,8 +4,8 @@ import type { Client, World } from "./finance.suite";
 import { makeSigner, type Clock, type Signer } from "./helpers";
 
 /**
- * Suíte da agenda (Fase 3). Mesmo código contra o Firestore falso (`pnpm test`) e contra o
- * emulador real com as Security Rules reais (`pnpm test:integration`, na CI).
+ * Suíte da agenda (Fase 3). Mesmo código contra o Supabase local (PGlite) (`pnpm test`) e contra o
+ * Supabase real com as RLS real (`pnpm test:integration` (CI), na CI).
  * Relógio dos testes: 2026-11-09 12:00 UTC = 09:00 em São Paulo (segunda-feira).
  */
 
@@ -798,10 +798,10 @@ export function defineAgendaSuite(
         const w = await world();
         const series = await newEvent(w.A, { title: "Curso", startDate: "2026-11-10", recurrence: { frequency: "weekly" } });
         await w.A.patch(`/v1/events/${series.id}`, { scope: "one", occurrenceDate: "2026-12-01", changes: { location: "Sala" } });
-        const before = w.fake?.calls.filter((c) => c.url.endsWith(":commit")).length ?? 0;
+        const before = w.fake?.calls.filter((c) => c.url.endsWith("/rpc/lf_commit")).length ?? 0;
         const r = await w.A.patch(`/v1/events/${series.id}`, { scope: "following", occurrenceDate: "2026-11-24", changes: { title: "Novo" } });
         expect(r.status).toBe(200);
-        const after = w.fake?.calls.filter((c) => c.url.endsWith(":commit")).length ?? 0;
+        const after = w.fake?.calls.filter((c) => c.url.endsWith("/rpc/lf_commit")).length ?? 0;
         expect(after - before).toBe(1);
       });
 

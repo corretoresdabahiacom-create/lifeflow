@@ -8,7 +8,7 @@ import {
 } from "@lifeflow/shared";
 import { todayInTimeZone } from "@lifeflow/shared";
 import { getEntitlements, type Entitlements } from "../billing/store";
-import type { DocData } from "../firestore";
+import type { DocData } from "../db";
 import { pathsFor, profileTimeZone, sha256Hex, type Ctx } from "../finance/common";
 
 /** Registro de auditoria (append-only): quem pediu o quê, o que foi proposto e o que de fato aconteceu. */

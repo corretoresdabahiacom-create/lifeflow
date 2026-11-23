@@ -43,8 +43,8 @@ export function LoginPage() {
 
         {!configured ? (
           <div className="state state--error" role="alert">
-            <strong>Firebase não configurado</strong>
-            <span>Defina as variáveis VITE_FIREBASE_* (veja docs/ENVIRONMENT.md).</span>
+            <strong>Supabase não configurado</strong>
+            <span>Defina as variáveis VITE_SUPABASE_* (veja docs/ENVIRONMENT.md).</span>
           </div>
         ) : null}
 

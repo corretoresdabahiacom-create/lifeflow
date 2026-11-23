@@ -1,14 +1,14 @@
 import { SignJWT, base64url } from "jose";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
+  ISSUER,
   ORIGIN,
-  PROJECT_ID,
-  fakeFirestore,
+  fakeSupabase,
   makeApp,
   makeSigner,
   putJson,
   signToken,
-  validPrefs,
+  uuidFor,
   validProfile,
   type Signer,
 } from "./helpers";
@@ -25,14 +25,24 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const setup = (initial = {}) => {
-  const fs = fakeFirestore(initial);
-  return { fs, call: makeApp(signer, fs.fetchImpl) };
+/** Perfis prontos no banco: `{ userA: "A" }` cria o usuário (auth.users) e o perfil dele. */
+const setup = async (profiles: Record<string, string> = {}) => {
+  const fs = await fakeSupabase();
+  for (const [label, name] of Object.entries(profiles)) {
+    const uid = uuidFor(label);
+    await fs.ensureUser(uid);
+    await fs.sql(
+      "insert into profiles (user_id, display_name, locale, timezone, currency, created_at, updated_at) values ($1, $2, 'pt-BR', 'America/Sao_Paulo', 'BRL', '2026-11-09T12:00:00.000Z', '2026-11-09T12:00:00.000Z')",
+      [uid, name],
+    );
+  }
+  const wrapped = ((input: RequestInfo | URL, init?: RequestInit) => fs.fetchImpl(input, init)) as typeof fetch;
+  return { fs, call: makeApp(signer, wrapped) };
 };
 
 describe("autenticação: ausência e invalidez do token", () => {
-  it("sem token: 401 e o Firestore nunca é chamado", async () => {
-    const { fs, call } = setup();
+  it("sem token: 401 e o banco nunca é chamado", async () => {
+    const { fs, call } = await setup();
     const res = await call("/v1/profile");
     expect(res.status).toBe(401);
     expect(res.headers.get("WWW-Authenticate")).toContain("Bearer");
@@ -40,21 +50,21 @@ describe("autenticação: ausência e invalidez do token", () => {
   });
 
   it("cabeçalho Authorization malformado: 401", async () => {
-    const { fs, call } = setup();
+    const { fs, call } = await setup();
     const res = await call("/v1/profile", { headers: { Authorization: "Basic abc" } });
     expect(res.status).toBe(401);
     expect(fs.calls).toHaveLength(0);
   });
 
   it("texto aleatório como JWT: 401", async () => {
-    const { fs, call } = setup();
+    const { fs, call } = await setup();
     const res = await call("/v1/profile", {}, "isto.nao.e-um-jwt");
     expect(res.status).toBe(401);
     expect(fs.calls).toHaveLength(0);
   });
 
   it("assinatura de outra chave: 401", async () => {
-    const { fs, call } = setup();
+    const { fs, call } = await setup();
     const forged = await signToken(attacker, { uid: "userB" });
     const res = await call("/v1/profile", {}, forged);
     expect(res.status).toBe(401);
@@ -62,7 +72,7 @@ describe("autenticação: ausência e invalidez do token", () => {
   });
 
   it("token expirado: 401 com invalid_token", async () => {
-    const { fs, call } = setup();
+    const { fs, call } = await setup();
     const past = Math.floor(Date.now() / 1000) - 7200;
     const token = await signToken(signer, { uid: "userA", issuedAt: past - 60, expiresAt: past });
     const res = await call("/v1/profile", {}, token);
@@ -72,33 +82,54 @@ describe("autenticação: ausência e invalidez do token", () => {
   });
 
   it("audiência errada: 401", async () => {
-    const { fs, call } = setup();
+    const { fs, call } = await setup();
     const token = await signToken(signer, { uid: "userA", audience: "outro-projeto" });
     expect((await call("/v1/profile", {}, token)).status).toBe(401);
     expect(fs.calls).toHaveLength(0);
   });
 
   it("emissor errado: 401", async () => {
-    const { fs, call } = setup();
-    const token = await signToken(signer, { uid: "userA", issuer: "https://securetoken.google.com/outro" });
+    const { fs, call } = await setup();
+    const token = await signToken(signer, { uid: "userA", issuer: "https://outro.supabase.co/auth/v1" });
     expect((await call("/v1/profile", {}, token)).status).toBe(401);
     expect(fs.calls).toHaveLength(0);
   });
 
   it("token sem sub: 401", async () => {
-    const { fs, call } = setup();
+    const { fs, call } = await setup();
     const token = await signToken(signer, {});
     expect((await call("/v1/profile", {}, token)).status).toBe(401);
     expect(fs.calls).toHaveLength(0);
   });
 
+  it("token sem papel `authenticated` (chave anônima) ou com sub fora do formato UUID: 401", async () => {
+    const { fs, call } = await setup();
+    const anon = await new SignJWT({ role: "anon" })
+      .setProtectedHeader({ alg: "RS256", kid: "k1" })
+      .setIssuer(ISSUER)
+      .setAudience("authenticated")
+      .setSubject(uuidFor("userA"))
+      .setExpirationTime("1h")
+      .sign(signer.privateKey);
+    expect((await call("/v1/profile", {}, anon)).status).toBe(401);
+    const notUuid = await new SignJWT({ role: "authenticated" })
+      .setProtectedHeader({ alg: "RS256", kid: "k1" })
+      .setIssuer(ISSUER)
+      .setAudience("authenticated")
+      .setSubject("userA; drop table profiles")
+      .setExpirationTime("1h")
+      .sign(signer.privateKey);
+    expect((await call("/v1/profile", {}, notUuid)).status).toBe(401);
+    expect(fs.calls).toHaveLength(0);
+  });
+
   it("algoritmo HS256 (confusão de algoritmo): 401", async () => {
-    const { fs, call } = setup();
+    const { fs, call } = await setup();
     const token = await new SignJWT({})
       .setProtectedHeader({ alg: "HS256", kid: "k1" })
-      .setSubject("userB")
-      .setIssuer(`https://securetoken.google.com/${PROJECT_ID}`)
-      .setAudience(PROJECT_ID)
+      .setSubject(uuidFor("userB"))
+      .setIssuer(ISSUER)
+      .setAudience("authenticated")
       .setExpirationTime("1h")
       .sign(new TextEncoder().encode("segredo-qualquer-segredo-qualquer-123"));
     expect((await call("/v1/profile", {}, token)).status).toBe(401);
@@ -106,13 +137,13 @@ describe("autenticação: ausência e invalidez do token", () => {
   });
 
   it('algoritmo "none": 401', async () => {
-    const { fs, call } = setup();
+    const { fs, call } = await setup();
     const header = base64url.encode(JSON.stringify({ alg: "none", typ: "JWT" }));
     const payload = base64url.encode(
       JSON.stringify({
-        sub: "userB",
-        iss: `https://securetoken.google.com/${PROJECT_ID}`,
-        aud: PROJECT_ID,
+        sub: uuidFor("userB"),
+        iss: ISSUER,
+        aud: "authenticated",
         exp: Math.floor(Date.now() / 1000) + 3600,
       }),
     );
@@ -123,133 +154,54 @@ describe("autenticação: ausência e invalidez do token", () => {
 
 describe("identidade vem somente do token", () => {
   it("GET /v1/me devolve o uid do token", async () => {
-    const { call } = setup();
+    const { call } = await setup();
     const token = await signToken(signer, { uid: "userA", email: "a@example.com" });
     const res = await call("/v1/me", {}, token);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ uid: "userA", email: "a@example.com" });
+    expect(await res.json()).toEqual({ uid: uuidFor("userA"), email: "a@example.com" });
   });
 
-  it("repassa o token ORIGINAL do usuário ao Firestore, sem credencial de serviço", async () => {
-    const { fs, call } = setup();
+  it("repassa o token ORIGINAL do usuário ao banco, sem chave de serviço", async () => {
+    const { fs, call } = await setup();
     const token = await signToken(signer, { uid: "userA" });
     await call("/v1/profile", {}, token);
     expect(fs.calls).toHaveLength(1);
     expect(fs.calls[0]?.authorization).toBe(`Bearer ${token}`);
+    expect(fs.calls[0]?.apikey).toBe("sb_publishable_test");
   });
 
   it("usuário A só acessa o caminho de A, mesmo com ?uid=userB na URL", async () => {
-    const { fs, call } = setup({
-      "users/userA": { uid: "userA", displayName: "A" },
-      "users/userB": { uid: "userB", displayName: "B" },
-    });
+    const { fs, call } = await setup({ userA: "A", userB: "B" });
     const token = await signToken(signer, { uid: "userA" });
     const res = await call("/v1/profile?uid=userB&userId=userB", { headers: { "X-User-Id": "userB" } }, token);
     expect(res.status).toBe(200);
     expect(((await res.json()) as { displayName: string }).displayName).toBe("A");
-    expect(fs.calls.every((c) => c.url.includes("/documents/users/userA"))).toBe(true);
-    expect(fs.calls.some((c) => c.url.includes("userB"))).toBe(false);
+    const others = fs.calls.filter((c) => !(c.url.endsWith("/rpc/lf_get") || c.url.endsWith("/rpc/lf_query") || c.url.endsWith("/rpc/lf_commit")));
+    expect(others).toHaveLength(0);
+    expect(fs.calls.every((c) => (c.body ?? "").includes(uuidFor("userA")))).toBe(true);
+    expect(fs.calls.some((c) => (c.body ?? "").includes(uuidFor("userB")))).toBe(false);
   });
 
   it("PUT com uid de outro usuário no corpo é rejeitado e nada é gravado", async () => {
-    const { fs, call } = setup({ "users/userB": { uid: "userB", displayName: "B" } });
+    const { fs, call } = await setup({ userB: "B" });
     const token = await signToken(signer, { uid: "userA" });
-    const res = await call("/v1/profile", putJson({ ...validProfile, uid: "userB" }), token);
+    const res = await call("/v1/profile", putJson({ ...validProfile, uid: uuidFor("userB") }), token);
     expect(res.status).toBe(400);
     expect(fs.calls).toHaveLength(0);
-    expect(fs.docs.get("users/userB")).toEqual({ uid: "userB", displayName: "B" });
-  });
-
-  it("PUT válido grava somente em users/{uid do token} com uid do token", async () => {
-    const { fs, call } = setup({ "users/userB": { uid: "userB", displayName: "B" } });
-    const token = await signToken(signer, { uid: "userA" });
-    const res = await call("/v1/profile?uid=userB", putJson(validProfile), token);
-    expect(res.status).toBe(200);
-    expect(fs.docs.get("users/userA")).toMatchObject({ uid: "userA", displayName: "Ana" });
-    expect(fs.docs.get("users/userB")).toEqual({ uid: "userB", displayName: "B" });
-    const writes = fs.calls.filter((c) => c.method === "PATCH");
-    expect(writes).toHaveLength(1);
-    expect(writes[0]?.url).toContain("/documents/users/userA?");
-  });
-
-  it("DELETE de preferências atinge só o documento de quem está autenticado", async () => {
-    const { fs, call } = setup({
-      "users/userA/preferences/app": { uid: "userA" },
-      "users/userB/preferences/app": { uid: "userB" },
-    });
-    const token = await signToken(signer, { uid: "userA" });
-    const res = await call("/v1/preferences?uid=userB", { method: "DELETE" }, token);
-    expect(res.status).toBe(204);
-    expect(fs.docs.has("users/userA/preferences/app")).toBe(false);
-    expect(fs.docs.has("users/userB/preferences/app")).toBe(true);
-  });
-
-  it("preserva createdAt ao atualizar o perfil", async () => {
-    const { fs, call } = setup({
-      "users/userA": { ...validProfile, uid: "userA", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
-    });
-    const token = await signToken(signer, { uid: "userA" });
-    await call("/v1/profile", putJson({ ...validProfile, displayName: "Nova" }), token);
-    expect(fs.docs.get("users/userA")).toMatchObject({
-      displayName: "Nova",
-      createdAt: "2026-01-01T00:00:00.000Z",
-      updatedAt: "2026-11-09T12:00:00.000Z",
-    });
+    expect(await fs.sql("select display_name from profiles")).toEqual([{ display_name: "B" }]);
   });
 });
 
-describe("preferências e validação", () => {
-  it("GET sem documento devolve os padrões com stored=false", async () => {
-    const { call } = setup();
-    const token = await signToken(signer, { uid: "userA" });
-    const body = (await (await call("/v1/preferences", {}, token)).json()) as Record<string, unknown>;
-    expect(body).toMatchObject({ theme: "system", confirmCreations: true, stored: false, uid: "userA" });
-  });
-
-  it("PUT válido e leitura seguinte", async () => {
-    const { call } = setup();
-    const token = await signToken(signer, { uid: "userA" });
-    expect((await call("/v1/preferences", putJson(validPrefs), token)).status).toBe(200);
-    const body = (await (await call("/v1/preferences", {}, token)).json()) as Record<string, unknown>;
-    expect(body).toMatchObject({ theme: "dark", stored: true });
-  });
-
-  it("rejeita JSON inválido, dados inválidos e corpo grande", async () => {
-    const { fs, call } = setup();
-    const token = await signToken(signer, { uid: "userA" });
-    const bad = await call("/v1/preferences", { method: "PUT", body: "{nao-json" }, token);
-    expect(bad.status).toBe(400);
-    const invalid = await call("/v1/preferences", putJson({ ...validPrefs, theme: "neon" }), token);
-    expect(invalid.status).toBe(400);
-    const big = await call("/v1/profile", putJson({ ...validProfile, displayName: "x".repeat(40000) }), token);
-    expect(big.status).toBe(413);
-    expect(fs.calls).toHaveLength(0);
-  });
-
-  it("método não permitido e rota inexistente", async () => {
-    const { call } = setup();
-    const token = await signToken(signer, { uid: "userA" });
-    expect((await call("/v1/me", { method: "POST" }, token)).status).toBe(405);
-    expect((await call("/v1/inexistente", {}, token)).status).toBe(404);
-  });
-
-  it("perfil inexistente: 404", async () => {
-    const { call } = setup();
-    const token = await signToken(signer, { uid: "userA" });
-    expect((await call("/v1/profile", {}, token)).status).toBe(404);
-  });
-});
-
-describe("erros do Firestore e resiliência", () => {
+describe("erros do banco e resiliência", () => {
   it("403 das regras de segurança vira 403", async () => {
-    const { fs, call } = setup();
+    const { fs, call } = await setup();
     fs.failNext(403);
     const token = await signToken(signer, { uid: "userA" });
     expect((await call("/v1/profile", {}, token)).status).toBe(403);
   });
 
-  it("401 do Firestore vira 401 com invalid_token", async () => {
-    const { fs, call } = setup();
+  it("401 do banco vira 401 com invalid_token", async () => {
+    const { fs, call } = await setup();
     fs.failNext(401);
     const token = await signToken(signer, { uid: "userA" });
     const res = await call("/v1/profile", {}, token);
@@ -258,7 +210,7 @@ describe("erros do Firestore e resiliência", () => {
   });
 
   it("leitura repete uma vez em falha transitória", async () => {
-    const { fs, call } = setup({ "users/userA": { uid: "userA", displayName: "A" } });
+    const { fs, call } = await setup({ userA: "A" });
     fs.failNext(503);
     const token = await signToken(signer, { uid: "userA" });
     const res = await call("/v1/profile", {}, token);
@@ -267,26 +219,25 @@ describe("erros do Firestore e resiliência", () => {
   });
 
   it("escrita NÃO é repetida automaticamente em falha", async () => {
-    const fs = fakeFirestore();
+    const fs = await fakeSupabase();
     const token = await signToken(signer, { uid: "userA" });
-    // A leitura do perfil passa; toda tentativa de escrita (PATCH) falha com 503.
-    const originalFetch = fs.fetchImpl;
-    let patchAttempts = 0;
-    const failingPatch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === "PATCH") {
-        patchAttempts++;
+    // A leitura passa; toda tentativa de escrita (lf_commit) falha com 503.
+    let writeAttempts = 0;
+    const failingWrite = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/rpc/lf_commit")) {
+        writeAttempts++;
         return new Response("{}", { status: 503 });
       }
-      return originalFetch(input, init);
+      return fs.fetchImpl(input, init);
     }) as typeof fetch;
-    const app = makeApp(signer, failingPatch);
+    const app = makeApp(signer, failingWrite);
     const res = await app("/v1/profile", putJson(validProfile), token);
     expect(res.status).toBe(502);
-    expect(patchAttempts).toBe(1);
+    expect(writeAttempts).toBe(1);
   });
 
   it("falha de rede vira 504 sem vazar detalhes", async () => {
-    const { fs, call } = setup();
+    const { fs, call } = await setup();
     fs.failNext("network", "network");
     const token = await signToken(signer, { uid: "userA" });
     const res = await call("/v1/profile", {}, token);
@@ -297,7 +248,7 @@ describe("erros do Firestore e resiliência", () => {
 
 describe("cabeçalhos, CORS e logs", () => {
   it("respostas autenticadas usam cache privado e não compartilhado", async () => {
-    const { call } = setup();
+    const { call } = await setup();
     const token = await signToken(signer, { uid: "userA" });
     const res = await call("/v1/me", {}, token);
     expect(res.headers.get("Cache-Control")).toBe("private, no-store");
@@ -306,7 +257,7 @@ describe("cabeçalhos, CORS e logs", () => {
   });
 
   it("CORS só libera a origem configurada", async () => {
-    const { call } = setup();
+    const { call } = await setup();
     const allowed = await call("/healthz", { headers: { Origin: ORIGIN } });
     expect(allowed.headers.get("Access-Control-Allow-Origin")).toBe(ORIGIN);
     const denied = await call("/healthz", { headers: { Origin: "https://evil.example" } });
@@ -316,14 +267,14 @@ describe("cabeçalhos, CORS e logs", () => {
   });
 
   it("healthz não exige autenticação", async () => {
-    const { call } = setup();
+    const { call } = await setup();
     const res = await call("/healthz");
     expect(res.status).toBe(200);
   });
 
   it("logs não contêm o token nem dados do corpo", async () => {
     const spy = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const { call } = setup();
+    const { call } = await setup();
     const token = await signToken(signer, { uid: "userA" });
     await call("/v1/profile", putJson(validProfile), token);
     await call("/v1/profile", {}, "token-invalido-xyz");

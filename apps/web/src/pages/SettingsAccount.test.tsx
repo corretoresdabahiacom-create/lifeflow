@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = { exportAccount: vi.fn(), deleteAccount: vi.fn() };
-const auth = { reauthenticate: vi.fn(), deleteAuthUser: vi.fn(), signOut: vi.fn() };
+const auth = { reauthenticate: vi.fn(), signOut: vi.fn() };
 vi.mock("../app/ApiProvider", () => ({ useApi: () => api }));
 vi.mock("../auth/context", () => ({ useAuth: () => auth }));
 vi.mock("../app/ProfileProvider", () => ({ useProfile: () => ({ profile: null, save: vi.fn() }) }));
@@ -13,7 +13,6 @@ import { AccountSection, DELETE_PHRASE } from "./SettingsPage";
 beforeEach(() => {
   for (const fn of [...Object.values(api), ...Object.values(auth)]) fn.mockReset();
   auth.reauthenticate.mockResolvedValue(undefined);
-  auth.deleteAuthUser.mockResolvedValue(undefined);
   auth.signOut.mockResolvedValue(undefined);
   api.deleteAccount.mockResolvedValue({ deleted: true, documents: 12 });
 });
@@ -53,7 +52,7 @@ describe("AccountSection (exportar e excluir conta)", () => {
   });
 
   it("senha incorreta: nada é apagado", async () => {
-    auth.reauthenticate.mockRejectedValue(new Error("auth/wrong-password"));
+    auth.reauthenticate.mockRejectedValue(Object.assign(new Error("x"), { code: "invalid_credentials" }));
     render(<AccountSection />);
     fill("errada", DELETE_PHRASE);
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Senha incorreta"));
@@ -61,29 +60,27 @@ describe("AccountSection (exportar e excluir conta)", () => {
     expect(auth.signOut).not.toHaveBeenCalled();
   });
 
-  it("fluxo completo: reautentica, apaga no servidor, remove o login e encerra a sessão (nesta ordem)", async () => {
+  it("fluxo completo: reautentica, apaga tudo no servidor (dados e login) e encerra a sessão (nesta ordem)", async () => {
     const order: string[] = [];
     auth.reauthenticate.mockImplementation(async () => void order.push("reauth"));
     api.deleteAccount.mockImplementation(async () => void order.push("api"));
-    auth.deleteAuthUser.mockImplementation(async () => void order.push("deleteUser"));
     auth.signOut.mockImplementation(async () => void order.push("signOut"));
     render(<AccountSection />);
     fill("segredo123", DELETE_PHRASE);
-    await waitFor(() => expect(order).toEqual(["reauth", "api", "deleteUser", "signOut"]));
+    await waitFor(() => expect(order).toEqual(["reauth", "api", "signOut"]));
     expect(auth.reauthenticate).toHaveBeenCalledWith("segredo123");
   });
 
-  it("falha do servidor: não remove o login nem sai (os dados continuam existindo)", async () => {
+  it("falha do servidor: não sai da sessão (os dados continuam existindo)", async () => {
     api.deleteAccount.mockRejectedValue(new Error("502"));
     render(<AccountSection />);
     fill("segredo123", DELETE_PHRASE);
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
-    expect(auth.deleteAuthUser).not.toHaveBeenCalled();
     expect(auth.signOut).not.toHaveBeenCalled();
   });
 
-  it("se remover o login falhar depois de apagar os dados, ainda encerra a sessão", async () => {
-    auth.deleteAuthUser.mockRejectedValue(new Error("requires-recent-login"));
+  it("se encerrar a sessão falhar depois de apagar tudo, não quebra a tela", async () => {
+    auth.signOut.mockRejectedValue(new Error("rede"));
     render(<AccountSection />);
     fill("segredo123", DELETE_PHRASE);
     await waitFor(() => expect(auth.signOut).toHaveBeenCalled());

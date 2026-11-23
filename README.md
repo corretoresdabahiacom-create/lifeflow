@@ -11,13 +11,13 @@ Resultados e pendências em [`docs/PHASE_04_AI.md`](docs/PHASE_04_AI.md) e
 ## Contrato do produto
 
 Contrato mestre: [`docs/MASTER_PROMPT.md`](docs/MASTER_PROMPT.md). Decisões e adaptações:
-[`docs/DECISIONS.md`](docs/DECISIONS.md) (o Supabase foi substituído por Firebase, D-004).
+[`docs/DECISIONS.md`](docs/DECISIONS.md) (o projeto voltou ao Supabase na D-011; Firebase foi usado nas Fases 1–6).
 
 ## Stack
 
 - Frontend: React + TypeScript + Vite (PWA), Cloudflare Pages
 - Backend: Cloudflare Workers
-- Banco e autenticação: Firebase (Firestore + Firebase Auth), com Security Rules
+- Banco e autenticação: Supabase (PostgreSQL + Supabase Auth), com RLS
 - Arquivos: Cloudflare R2, somente quando necessário
 - Pacotes: pnpm (monorepo)
 
@@ -27,7 +27,7 @@ Contrato mestre: [`docs/MASTER_PROMPT.md`](docs/MASTER_PROMPT.md). Decisões e a
 apps/web/            Frontend PWA
 workers/api/         Cloudflare Worker (API)
 packages/shared/     Schemas e tipos compartilhados
-firebase/            Regras do Firestore, índices e testes de regras
+supabase/            Migrações SQL (esquema, RLS, funções), config da pilha local e testes do banco
 docs/                Documentação permanente
 ```
 
@@ -41,7 +41,8 @@ pnpm lint
 pnpm typecheck
 pnpm test          # unitários e Worker (mocks)
 pnpm build
-pnpm test:rules    # regras do Firestore no emulador (precisa de Java e internet)
+pnpm test:rules    # testes do banco (RLS/gatilhos/funções) em Postgres local, sem Docker
+pnpm test:integration  # Worker contra o Supabase local real (Docker + Supabase CLI; só na CI por ora)
 ```
 
 ## Fluxo de branches
@@ -51,4 +52,4 @@ Trabalho em `develop`; `main` deve ser protegida no GitHub.
 ## Segurança
 
 Nenhuma credencial real é versionada. `.env.example` lista só nomes de variáveis. O Worker não possui
-credencial de conta de serviço: ele valida o ID token do Firebase e o repassa ao Firestore, que aplica as regras.
+credencial privilegiada nas requisições de usuário: ele valida o JWT do Supabase e o repassa ao PostgREST, e a RLS do Postgres aplica as regras. A chave secreta só é usada em operações de sistema restritas.

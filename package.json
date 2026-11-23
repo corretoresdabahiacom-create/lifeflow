@@ -12,9 +12,10 @@
     "lint": "eslint .",
     "typecheck": "pnpm -r --workspace-concurrency=1 typecheck",
     "test": "pnpm -r --workspace-concurrency=1 --if-present test",
-    "test:rules": "pnpm --filter @lifeflow/firebase-rules test:rules",
+    "test:rules": "pnpm --filter @lifeflow/db test",
     "build": "pnpm -r --workspace-concurrency=1 --if-present build",
-    "test:integration": "pnpm --filter @lifeflow/firebase-rules test:integration"
+    "test:integration": "bash scripts/test-integration.sh",
+    "db:recovery": "bash supabase/scripts/recovery-test.sh"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
@@ -22,10 +23,5 @@
     "globals": "^15.0.0",
     "typescript": "^5.6.0",
     "typescript-eslint": "^8.0.0"
-  },
-  "pnpm": {
-    "overrides": {
-      "@grpc/grpc-js": ">=1.13.6"
-    }
   }
 }

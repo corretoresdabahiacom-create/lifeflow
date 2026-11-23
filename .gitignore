@@ -15,3 +15,5 @@ supabase/.temp/
 supabase/.branches/
 *.pem
 *.key
+supabase/signing_keys.json
+supabase/.env

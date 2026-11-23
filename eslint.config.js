@@ -10,7 +10,7 @@ export default tseslint.config(
       "**/.wrangler/**",
       "**/coverage/**",
       "**/public/sw.js",
-      "firebase/.emulator-data/**",
+      "supabase/signing_keys.json",
     ],
   },
   js.configs.recommended,

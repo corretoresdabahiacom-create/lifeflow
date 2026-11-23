@@ -31,6 +31,8 @@ Problema, Alternativas, Justificativa, Impacto, Aprovação.
 
 ## D-004 — Supabase substituído por Firebase (Firestore + Firebase Auth)
 
+> **Revertida pela D-011 (2026-11-23):** o projeto voltou ao Supabase (Postgres + Supabase Auth). O texto abaixo é histórico.
+
 - **Data:** 2026-11-09
 - **Problema:** O responsável solicitou trocar o Supabase por Firebase. A decisão A1/A2 do
   contrato mestre exige justificativa e autorização para trocar tecnologias.
@@ -199,3 +201,49 @@ Problema, Alternativas, Justificativa, Impacto, Aprovação.
   informa o corte); sem identificadores internos do provedor.
 - **Backups antigos contêm dados de quem já excluiu a conta**; ver `BACKUP_RECOVERY.md` (reaplicar exclusões, limitar retenção).
 - Alternativa descartada: `delete: true` nas regras para o cliente — deixaria o cliente apagar a trilha de auditoria.
+
+## D-011 — Migração do Firestore/Firebase Auth para o Supabase (2026-11-23)
+
+**Pedido do usuário:** "Migre o banco de dados para o Supabase". Escolhas: escopo **banco e login**; acesso **JWT do usuário + RLS**;
+ambiente **só código e testes locais** (nenhum projeto Supabase foi criado nem tocado).
+
+**Decisão.** Postgres do Supabase no lugar do Firestore, Supabase Auth no lugar do Firebase Auth. O Worker continua sendo o
+único ponto de acesso do app (o front só usa o Supabase para autenticar).
+
+- **Modelo relacional** (`supabase/migrations`): 26 tabelas, uma por coleção antiga, com `user_id uuid → auth.users ON DELETE CASCADE`,
+  colunas `snake_case`, dinheiro em `bigint` (centavos), datas/horas como `text` com domínios validados por regex (mesmo formato da API),
+  chaves estrangeiras compostas (lançamentos/transferências → contas do mesmo dono) e `CHECK`s portados das antigas Security Rules.
+- **Autorização = RLS + gatilhos.** Cada tabela tem RLS por dono; imutabilidade de campos, transições de estado (estorno, status da ação
+  da IA, contadores só crescem), tabelas só de inclusão e proibição de DELETE são impostas por gatilhos/políticas — o equivalente do que
+  as rules faziam. O cliente (token do usuário) não tem `UPDATE` onde a regra antiga proibia.
+- **Acesso do Worker por funções genéricas** `lf_get/lf_commit/lf_query/lf_count` (SECURITY INVOKER, chamadas pelo PostgREST com o JWT do
+  usuário). Mantêm a interface de "documentos com caminho" do código de negócio (`users/{uid}/accounts/{id}`), então os módulos
+  financeiro/agenda/IA/cobrança quase não mudaram. `lf_commit` aplica várias operações em UMA transação, com pré-condições
+  (`exists`, `version`) e incrementos atômicos — o antigo `documents:commit`. Falha de pré-condição = SQLSTATE `PT409` → HTTP 409.
+- **`updateTime` do Firestore → coluna `version`** (bigint, incrementada por gatilho a cada alteração; trafega como texto).
+- **Eventos sem campos (exceções de ocorrência)** guardam quais campos foram sobrescritos em `present_fields`, preservando a diferença
+  entre "herda da série" e "sobrescrito com nulo".
+- **Auth.** JWT do Supabase validado pelo Worker via JWKS (ES256/RS256; HS256 é recusado de propósito), `aud=authenticated`,
+  `iss=<SUPABASE_URL>/auth/v1`, `sub` UUID, `role=authenticated`. Administrador = `app_metadata.admin === true` (só quem administra o
+  projeto grava). "Login recente" vem do `amr[].timestamp` mais novo (o Supabase não emite `auth_time`). Re-autenticação no front =
+  `signInWithPassword`.
+- **Caminho privilegiado restrito (`SystemDb`).** A conta de serviço do Google foi substituída pela **chave secreta** do Supabase
+  (`sb_secret_…`, só em `apikey`, papel `service_role`). A lista fechada de caminhos foi mantida (planos, assinaturas, eventos de webhook,
+  logs administrativos, cobranças e agregados de consumo da IA).
+- **Exclusão de conta.** `lf_erase_user(uid)` (só `service_role`) apaga a linha de `auth.users`; as FKs em cascata removem todo o resto —
+  inclusive o login, que antes o front removia. O Worker continua exigindo login recente, cancelando a cobrança antes e registrando
+  `account_deleted`.
+- **Consistência com o Firestore.** Texto compara-se em colação `C` (bytes) e ordena-se com NULLs primeiro em ASC e por último em DESC, como o
+  Firestore, para o comportamento das listagens e cursores não mudar.
+
+**Dados existentes.** Não havia dados reais (nenhum projeto Firebase foi criado), então **nenhuma migração de dados foi executada ou
+necessária**. Se houvesse, o caminho seria exportar o Firestore e inserir via `lf_commit` com service_role (o formato de documento é o mesmo).
+
+**O que foi e não foi testado.**
+- Local, nesta máquina: todas as migrações rodam em um Postgres REAL (PGlite) — 44 testes de banco (RLS, gatilhos, CHECKs, funções `lf_*`)
+  e os 264 testes do Worker (finanças, agenda, IA, cobrança, conta, segurança) contra esse Postgres, por um PostgREST **emulado**.
+- **Não** testado localmente: verificação da assinatura do JWT pelo PostgREST, GoTrue (cadastro/login/`amr`), formato exato dos cabeçalhos,
+  `supabase db push`, `pg_dump`/`pg_restore` reais e qualquer Supabase hospedado. A suíte `pnpm test:integration` (CI, `supabase start`) foi
+  escrita para cobrir isso, mas **ainda não rodou**.
+- Foram removidos os 137 testes das antigas Security Rules; a cobertura equivalente agora são os testes de RLS/gatilhos (`supabase/tests`)
+  e os de isolamento do Worker. A contagem total mudou porque os cenários foram reorganizados, não porque algo deixou de ser verificado.

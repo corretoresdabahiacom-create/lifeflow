@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { PaymentProviderError } from "../src/billing/provider";
-import type { FirestoreClient } from "../src/firestore";
+import type { DbClient } from "../src/db";
 import { SystemAccessError, UserErasure } from "../src/system";
 import { say } from "./ai.suite";
 import type { BillingWorld } from "./billing.suite";
@@ -8,8 +8,8 @@ import type { Client, Reply } from "./finance.suite";
 import { env, makeSigner, signToken, validPrefs, type Signer } from "./helpers";
 
 /**
- * Fase 6 — exportação completa dos dados e exclusão de conta (LGPD). Mesma suíte no Firestore falso e no
- * emulador real (com as Security Rules reais). O provedor de pagamentos é simulado.
+ * Fase 6 — exportação completa dos dados e exclusão de conta (LGPD). Mesma suíte no Supabase local (PGlite) e no
+ * Supabase real (com as RLS real). O provedor de pagamentos é simulado.
  */
 
 const PERIOD_END = "2026-12-09T12:00:00.000Z";
@@ -19,7 +19,7 @@ const code = (r: Reply) => (r.body["error"] as { code: string } | undefined)?.co
 export function defineAccountSuite(
   title: string,
   makeWorld: (signer: Signer, options: { noEmailForA?: boolean }) => BillingWorld | Promise<BillingWorld>,
-  options: { rawClient: (w: BillingWorld) => FirestoreClient },
+  options: { rawClient: (w: BillingWorld) => DbClient; fake: boolean },
 ): void {
   describe(title, () => {
     let signer: Signer;
@@ -129,7 +129,8 @@ export function defineAccountSuite(
       expect((await w.A.get("/v1/account/delete")).status).toBe(405);
     });
 
-    it("exclusão: exige login recente (senha confirmada há ≤ 5 min)", async () => {
+    // Precisa forjar um token com `amr` antigo: só é possível com a chave de teste (o Supabase real assina o dele).
+    it.runIf(options.fake)("exclusão: exige login recente (senha confirmada há ≤ 5 min)", async () => {
       const w = await world();
       await populate(w, w.A, "Ana");
       // Token com login há 1 hora (relativo ao relógio simulado do Worker).
@@ -148,7 +149,7 @@ export function defineAccountSuite(
       const w = await world();
       const { subId } = await populate(w, w.A, "Ana");
       const raw = options.rawClient(w);
-      expect((await raw.listCollectionIds(`users/${w.uidA}`)).length).toBeGreaterThan(8);
+      expect(await raw.query(`users/${w.uidA}`, { collection: "accounts", limit: 10 })).not.toHaveLength(0);
 
       const r = await w.A.post("/v1/account/delete", CONFIRM);
       expect(r.status, r.text).toBe(200);
@@ -156,7 +157,9 @@ export function defineAccountSuite(
       expect(Number(r.body["documents"])).toBeGreaterThan(10);
 
       // Nada sobrou no banco: nem subcoleções, nem mensagens da IA, nem perfil, nem assinatura.
-      expect(await raw.listCollectionIds(`users/${w.uidA}`)).toEqual([]);
+      for (const collection of ["accounts", "transactions", "payables", "events", "tasks", "aiConversations", "aiLogs", "notifications", "consents"]) {
+        expect(await raw.query(`users/${w.uidA}`, { collection, limit: 10 }), collection).toEqual([]);
+      }
       expect(await raw.get(`users/${w.uidA}`)).toBeNull();
       expect(await raw.get(`subscriptions/${w.uidA}`)).toBeNull();
       // A cobrança foi encerrada no provedor.
@@ -204,7 +207,7 @@ export function defineAccountSuite(
       expect((await w.A.post("/v1/account/delete", CONFIRM)).status).toBe(200);
       expect((await w.A.post("/v1/account/delete", CONFIRM)).status).toBe(200);
       expect(w.payments.calls.length).toBe(calls);
-      expect(await options.rawClient(w).listCollectionIds(`users/${w.uidA}`)).toEqual([]);
+      expect(await options.rawClient(w).query(`users/${w.uidA}`, { collection: "tasks", limit: 10 })).toEqual([]);
     });
 
     it("exclusão: webhook tardio da assinatura apagada não ressuscita nada; o mesmo uid pode recomeçar do zero", async () => {
@@ -227,14 +230,9 @@ export function defineAccountSuite(
       const client = options.rawClient(w);
       expect(() => new UserErasure(client, "a/b")).toThrow(SystemAccessError);
       expect(() => new UserErasure(client, "")).toThrow(SystemAccessError);
-      const erasure = new UserErasure(client, w.uidA);
-      const guard = (path: string) => (erasure as unknown as { guard(p: string): void }).guard(path);
-      expect(() => guard(`users/${w.uidB}`)).toThrow(SystemAccessError);
-      expect(() => guard(`users/${w.uidA}x`)).toThrow(SystemAccessError);
-      expect(() => guard(`subscriptions/${w.uidB}`)).toThrow(SystemAccessError);
-      expect(() => guard("plans/pro")).toThrow(SystemAccessError);
-      expect(() => guard(`users/${w.uidA}/transactions/t1`)).not.toThrow();
-      expect(() => guard(`subscriptions/${w.uidA}`)).not.toThrow();
+      for (const bad of [`${w.uidA}/accounts`, `${w.uidA}x`, "users", "plans/pro"]) expect(() => new UserErasure(client, bad), bad).toThrow(SystemAccessError);
+      // O único alvo possível é o uid informado (o argumento da função SQL é só esse uuid): não há caminho a escolher.
+      expect(() => new UserErasure(client, w.uidB)).not.toThrow();
     });
   });
 }

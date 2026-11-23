@@ -13,7 +13,7 @@ import {
   type TransactionType,
 } from "@lifeflow/shared";
 import { HttpError } from "../errors";
-import { PreconditionFailedError, type DocData, type WriteOp } from "../firestore";
+import { PreconditionFailedError, type DocData, type WriteOp } from "../db";
 import { allow, json, parseBody } from "../http";
 import {
   assertId,

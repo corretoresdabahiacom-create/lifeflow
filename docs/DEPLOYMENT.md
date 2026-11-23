@@ -1,17 +1,17 @@
 # DEPLOYMENT
 
-> Estado (Fase 6): **nenhum deploy foi realizado** (não há contas Cloudflare/Firebase/Mercado Pago). Os workflows e
+> Estado (Fase 6): **nenhum deploy foi realizado** (não há contas Cloudflare/Supabase/Mercado Pago). Os workflows e
 > scripts abaixo foram escritos e validados apenas quanto à sintaxe e, no caso do Worker, rodando-o localmente.
 
 ## O que existe
 
-- **CI** (`.github/workflows/ci.yml`): `verify` (lint, typecheck, test, build) e `firestore-rules` (regras, integração
-  com o emulador e teste de recuperação). Não faz deploy.
+- **CI** (`.github/workflows/ci.yml`): `verify` (lint, typecheck, test com Postgres local, build), `supabase-integration` (suítes do Worker contra `supabase start`)
+  e `supabase-recovery` (pg_dump → perda → pg_restore). Os dois últimos **ainda não rodaram**. Não faz deploy.
 - **Deploy** (`.github/workflows/deploy.yml`): manual (`workflow_dispatch`), escolhe `staging` ou `production`;
-  produção só a partir de `main`; reexecuta toda a verificação; publica regras/índices → Worker → Pages; roda
+  produção só a partir de `main`; reexecuta toda a verificação; aplica as migrações (`supabase db push`) → Worker → Pages; roda
   `scripts/smoke.sh`. **Nunca executado.**
-- **Backup** (`.github/workflows/backup.yml`): exportação diária do Firestore, só com `BACKUP_ENABLED=true`. **Nunca executado.**
-- **Scripts:** `scripts/smoke.sh` (verificação pós-deploy), `scripts/backup-firestore.sh`, `scripts/restore-firestore.sh`.
+- **Backup** (`.github/workflows/backup.yml`): `pg_dump` diário criptografado, só com `BACKUP_ENABLED=true`. **Nunca executado.**
+- **Scripts:** `scripts/smoke.sh` (verificação pós-deploy), `scripts/backup-db.sh`, `scripts/restore-db.sh`, `scripts/test-integration.sh`.
 - **Worker local:** `pnpm --filter @lifeflow/api exec wrangler dev --local` roda o Worker real (workerd); foi usado para
   conferir `/healthz`, `/readyz`, 401 sem token, CORS e webhook sem assinatura.
 
@@ -22,7 +22,7 @@ Ver [`RUNBOOK.md`](RUNBOOK.md) (primeiro deploy, rollback, monitoramento, incide
 
 ## Ambientes
 
-Desenvolvimento (emuladores), **staging** e **produção**, cada um com seu projeto Firebase. Sem deploy automático em
+Desenvolvimento (`supabase start`), **staging** e **produção**, cada um com seu projeto Supabase. Sem deploy automático em
 produção; sem deploy com testes críticos falhando (o workflow reexecuta tudo).
 
 ## Backup e recuperação

@@ -1,6 +1,6 @@
 # API
 
-Worker em `workers/api`. Rotas autenticadas exigem `Authorization: Bearer <ID token do Firebase>`.
+Worker em `workers/api`. Rotas autenticadas exigem `Authorization: Bearer <JWT de acesso do Supabase Auth>`.
 Token ausente, inválido ou expirado → `401` com `WWW-Authenticate: Bearer error="invalid_token"`;
 o SDK do frontend renova a sessão e o cliente repete a requisição uma vez.
 
@@ -74,7 +74,7 @@ Regras gerais:
 
 - Corpos são validados por schemas `strict` (`packages/shared`): campos desconhecidos, incluindo `uid`,
   retornam `400`. Limite de 16 KB (`413`).
-- O `uid` nunca é aceito do cliente; os caminhos do Firestore são `users/{uid do token}`.
+- O `uid` nunca é aceito do cliente; os caminhos de documento são `users/{uid do token}` (mapeados para tabelas com `user_id` = uid do token).
 - Códigos: `400` validação, `401` autenticação, `403` regras do banco, `404`, `405`, `413`,
   `429` limite do banco, `502`/`504` falha do banco.
 - CORS: somente a origem em `ALLOWED_ORIGIN` (métodos GET, POST, PUT, PATCH, DELETE; cabeçalho `Idempotency-Key`).

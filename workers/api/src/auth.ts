@@ -3,15 +3,22 @@ import type { JWTVerifyGetKey } from "jose";
 import type { Env } from "./env";
 import { HttpError, unauthorized } from "./errors";
 
-export const DEFAULT_JWKS_URL =
-  "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function authBase(env: Env): string {
+  return `${env.SUPABASE_URL.replace(/\/+$/, "")}/auth/v1`;
+}
+
+export function jwksUrl(env: Env): string {
+  return env.JWKS_URL ?? `${authBase(env)}/.well-known/jwks.json`;
+}
 
 export interface AuthenticatedUser {
   uid: string;
   email?: string;
   /** Momento (epoch, s) do último login com credencial; usado para exigir login recente em ações sensíveis. */
   authTime?: number;
-  /** Claim `admin: true` do ID token (definida só por quem administra o projeto Firebase). */
+  /** `app_metadata.admin === true` do JWT (gravado só por quem administra o projeto; o usuário não altera `app_metadata`). */
   admin?: boolean;
 }
 
@@ -19,9 +26,9 @@ export type KeyResolver = JWTVerifyGetKey;
 
 const remoteSets = new Map<string, KeyResolver>();
 
-/** Resolve as chaves públicas do Firebase Auth (cache em memória do isolate). */
+/** Resolve as chaves públicas do Supabase Auth (cache em memória do isolate). */
 export function defaultKeyResolver(env: Env): KeyResolver {
-  const url = env.JWKS_URL ?? DEFAULT_JWKS_URL;
+  const url = jwksUrl(env);
   let resolver = remoteSets.get(url);
   if (!resolver) {
     resolver = createRemoteJWKSet(new URL(url), { timeoutDuration: 5000 });
@@ -39,39 +46,46 @@ export function extractBearerToken(request: Request): string {
 }
 
 /**
- * Valida criptograficamente o ID token do Firebase: assinatura RS256, emissor, audiência,
- * expiração e `sub`. A identidade vem exclusivamente do token validado.
+ * Valida criptograficamente o JWT do Supabase Auth: assinatura assimétrica (ES256/RS256), emissor, audiência
+ * `authenticated`, expiração e `sub` (UUID). Chaves simétricas (HS256) são recusadas: o Worker nunca vê o segredo.
+ * A identidade vem exclusivamente do token validado.
  */
-export async function verifyFirebaseToken(
+export async function verifySupabaseToken(
   token: string,
   env: Env,
   keys: KeyResolver,
 ): Promise<AuthenticatedUser> {
-  const projectId = env.FIREBASE_PROJECT_ID;
   try {
     const { payload } = await jwtVerify(token, keys, {
-      algorithms: ["RS256"],
-      issuer: `https://securetoken.google.com/${projectId}`,
-      audience: projectId,
+      algorithms: ["ES256", "RS256"],
+      issuer: authBase(env),
+      audience: "authenticated",
       clockTolerance: 5,
     });
 
     const uid = payload.sub;
-    if (typeof uid !== "string" || uid.length === 0 || uid.length > 128) {
-      throw unauthorized("Token sem identificação de usuário");
+    if (typeof uid !== "string" || !UUID.test(uid)) throw unauthorized("Token sem identificação de usuário");
+    if (payload["role"] !== "authenticated") throw unauthorized("Token sem papel de usuário");
+
+    // O Supabase não emite `auth_time`; o último método de autenticação fica em `amr[].timestamp`.
+    const amr = Array.isArray(payload["amr"]) ? (payload["amr"] as unknown[]) : [];
+    let authTime: number | undefined;
+    for (const entry of amr) {
+      const ts = (entry as { timestamp?: unknown } | null)?.timestamp;
+      if (typeof ts === "number" && (authTime === undefined || ts > authTime)) authTime = ts;
     }
-    const authTime = payload["auth_time"];
-    if (typeof authTime === "number" && authTime > Math.floor(Date.now() / 1000) + 5) {
-      throw unauthorized("auth_time no futuro");
+    if (authTime !== undefined && authTime > Math.floor(Date.now() / 1000) + 5) {
+      throw unauthorized("Momento de autenticação no futuro");
     }
 
     const email = typeof payload["email"] === "string" ? payload["email"] : undefined;
-    const admin = payload["admin"] === true;
+    const meta = payload["app_metadata"] as { admin?: unknown } | undefined;
+    const admin = meta?.admin === true;
     return {
       uid,
       ...(email ? { email } : {}),
       ...(admin ? { admin } : {}),
-      ...(typeof authTime === "number" ? { authTime } : {}),
+      ...(authTime !== undefined ? { authTime } : {}),
     };
   } catch (error) {
     if (error instanceof HttpError) throw error;

@@ -13,7 +13,6 @@ const base: AuthContextValue = {
   signUp: async () => undefined,
   signOut: async () => undefined,
   reauthenticate: async () => undefined,
-  deleteAuthUser: async () => undefined,
   getIdToken: async () => "token",
 };
 

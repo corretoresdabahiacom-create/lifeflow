@@ -27,8 +27,8 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
-  firestore-rules:
-    name: Firestore rules (emulator)
+  supabase-integration:
+    name: Supabase real (GoTrue + PostgREST + RLS)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,19 +39,20 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - uses: actions/setup-java@v4
+      - uses: supabase/setup-cli@v1
         with:
-          distribution: temurin
-          java-version: 21
+          version: latest
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:rules
-        env:
-          FIREBASE_TELEMETRY_COLLECTION_ENABLED: "false"
-      # Mesma suíte financeira do Worker, contra o emulador real e as Security Rules reais.
+      # Mesma suíte do Worker (finanças, agenda, IA, cobrança, conta, segurança), mas com a pilha Supabase de verdade:
+      # as migrações de supabase/migrations, GoTrue emitindo os JWTs e o PostgREST verificando a assinatura e aplicando a RLS.
       - run: pnpm test:integration
-        env:
-          FIREBASE_TELEMETRY_COLLECTION_ENABLED: "false"
-      # Recuperação: backup (export) -> perda total -> restauração (import) -> conferência documento a documento.
-      - run: pnpm --filter @lifeflow/firebase-rules test:recovery
-        env:
-          FIREBASE_TELEMETRY_COLLECTION_ENABLED: "false"
+
+  supabase-recovery:
+    name: Recuperação (pg_dump -> perda total -> pg_restore)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: bash supabase/scripts/recovery-test.sh

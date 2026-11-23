@@ -7,13 +7,13 @@ import type {
   Transfer,
 } from "@lifeflow/shared";
 import { beforeAll, describe, expect, it } from "vitest";
-import { makeApp, makeSigner, signToken, type Signer, type fakeFirestore } from "./helpers";
+import { makeApp, makeSigner, signToken, type Signer, type FakeSupabase } from "./helpers";
 import type { Env } from "../src/env";
 
 /**
  * Suíte financeira da Fase 2. Roda duas vezes com o MESMO código:
- *  - contra o Firestore falso em memória (`pnpm test`, local e CI);
- *  - contra o emulador real do Firestore, com as Security Rules reais (`pnpm test:integration`, CI).
+ *  - contra o Supabase local (Postgres real em PGlite) (`pnpm test`, local e CI);
+ *  - contra o Supabase real (`supabase start`), com as RLS real (`pnpm test:integration` (CI), CI).
  */
 
 export interface Reply {
@@ -72,7 +72,7 @@ export class Client {
 export interface World {
   A: Client;
   B: Client;
-  fake?: ReturnType<typeof fakeFirestore>;
+  fake?: FakeSupabase;
 }
 
 const asAccount = (r: Reply) => r.body as unknown as Account;
@@ -689,12 +689,12 @@ export function defineFinanceSuite(
         const before = fake!.calls.length;
         const r = await A.post("/v1/transfers", { fromAccountId: a1.id, toAccountId: a2.id, amountCents: 1000, date: TODAY });
         expect(r.status).toBe(201);
-        const commits = fake!.calls.slice(before).filter((c) => c.url.endsWith(":commit"));
+        const commits = fake!.calls.slice(before).filter((c) => c.url.endsWith("/rpc/lf_commit"));
         expect(commits).toHaveLength(1);
-        const writes = (JSON.parse(commits[0]?.body ?? "{}") as { writes: Array<{ updateTransforms?: unknown[]; currentDocument?: unknown }> }).writes;
+        const writes = (JSON.parse(commits[0]?.body ?? "{}") as { p_ops: Array<{ increments?: unknown; precondition?: unknown }> }).p_ops;
         expect(writes).toHaveLength(5);
-        expect(writes.filter((w) => w.updateTransforms).length).toBe(2);
-        expect(writes.every((w) => w.currentDocument !== undefined)).toBe(true);
+        expect(writes.filter((w) => w.increments).length).toBe(2);
+        expect(writes.every((w) => w.precondition !== undefined)).toBe(true);
       });
 
       it("falha do banco no commit não deixa estado parcial", async () => {
@@ -727,22 +727,20 @@ export function defineFinanceSuite(
         await A.post("/v1/transactions", txBody(acc.id));
         expect(fake!.calls.length).toBeGreaterThan(0);
         expect(fake!.calls.every((c) => (c.authorization ?? "").startsWith("Bearer ey"))).toBe(true);
+        // E a chave secreta (service_role) nunca acompanha uma rota de usuário.
+        expect(fake!.calls.every((c) => !(c.apikey ?? "").startsWith("sb_secret_"))).toBe(true);
       });
 
-      it("a precondição de updateTime impede sobrescrever alteração concorrente (409)", async () => {
+      it("a precondição de versão impede sobrescrever alteração concorrente (409)", async () => {
         const { A, fake } = await world();
         const acc = await newAccount(A, "Corrente", 0);
         // Outra alteração acontece entre a leitura e a escrita do PATCH.
-        const path = [...fake!.docs.keys()].find((k) => k.includes("/accounts/")) as string;
         const originalFetch = fake!.fetchImpl;
         let injected = false;
         fake!.fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
-          if (!injected && (init?.method ?? "GET") === "POST" && String(input).endsWith(":commit")) {
+          if (!injected && (init?.method ?? "GET") === "POST" && String(input).endsWith("/rpc/lf_commit")) {
             injected = true;
-            await originalFetch(`https://firestore.test/v1/projects/demo-lifeflow/databases/(default)/documents/${path}?updateMask.fieldPaths=name`, {
-              method: "PATCH",
-              body: JSON.stringify({ fields: { name: { stringValue: "mudou por fora" } } }),
-            });
+            await fake!.sql("update accounts set name = 'mudou por fora' where id = $1", [acc.id]);
           }
           return originalFetch(input, init);
         }) as typeof fetch;

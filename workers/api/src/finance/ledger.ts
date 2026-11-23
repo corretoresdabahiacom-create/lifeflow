@@ -12,7 +12,7 @@ import {
   type Transfer,
 } from "@lifeflow/shared";
 import { HttpError } from "../errors";
-import type { DocData, WriteOp } from "../firestore";
+import type { DocData, WriteOp } from "../db";
 import { allow, json, parseBody } from "../http";
 import {
   assertId,

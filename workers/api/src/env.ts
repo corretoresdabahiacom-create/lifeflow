@@ -1,11 +1,11 @@
 export interface Env {
-  /** ID do projeto Firebase (público). Usado em `iss`, `aud` e no caminho do Firestore. */
-  FIREBASE_PROJECT_ID: string;
+  /** URL do projeto Supabase (pública), ex.: https://abcd.supabase.co. Origem de `iss`, do JWKS e do PostgREST. */
+  SUPABASE_URL: string;
+  /** Chave publicável (`sb_publishable_…`, pública): vai em `apikey` junto do JWT do usuário. */
+  SUPABASE_PUBLISHABLE_KEY: string;
   /** Única origem permitida no CORS. */
   ALLOWED_ORIGIN: string;
-  /** Sobrescreve o endpoint do Firestore (emulador/testes). */
-  FIRESTORE_BASE_URL?: string;
-  /** Sobrescreve a URL das chaves públicas do Firebase Auth (testes). */
+  /** Sobrescreve a URL das chaves públicas do Supabase Auth (testes). Padrão: `${SUPABASE_URL}/auth/v1/.well-known/jwks.json`. */
   JWKS_URL?: string;
   /** Provedor de LLM (padrão `deepseek`). Trocar não exige alterar módulos de negócio. */
   LLM_PROVIDER?: string;
@@ -32,8 +32,8 @@ export interface Env {
   /** URL pública deste Worker (o provedor chama `${API_PUBLIC_URL}/webhooks/mercadopago`). */
   API_PUBLIC_URL?: string;
   /**
-   * SECRET: JSON da conta de serviço do Firebase. Usada SOMENTE pelo caminho privilegiado restrito
-   * (webhooks, assinaturas, painel administrativo). Nunca vai ao navegador.
+   * SECRET: chave secreta do Supabase (`sb_secret_…`; `wrangler secret put SUPABASE_SECRET_KEY`). Usada SOMENTE pelo
+   * caminho privilegiado restrito (webhooks, assinaturas, painel administrativo, exclusão de conta). Nunca vai ao navegador.
    */
-  GOOGLE_SERVICE_ACCOUNT_JSON?: string;
+  SUPABASE_SECRET_KEY?: string;
 }

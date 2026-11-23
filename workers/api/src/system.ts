@@ -1,21 +1,20 @@
-import { SignJWT, importPKCS8 } from "jose";
 import type { Env } from "./env";
 import { HttpError } from "./errors";
 import {
-  FirestoreClient,
+  DbClient,
   type DocData,
   type QueryFilter,
   type QuerySpec,
   type StoredDoc,
   type WriteOp,
-} from "./firestore";
+} from "./db";
 
 /**
  * Caminho PRIVILEGIADO e RESTRITO do Worker.
  *
- * Quase tudo no Worker usa o token do usuário (as Security Rules valem). Webhooks de pagamento e o painel
+ * Quase tudo no Worker usa o token do usuário (a RLS do Postgres vale). Webhooks de pagamento e o painel
  * administrativo não têm token de usuário e precisam gravar assinaturas, que o cliente não pode forjar.
- * Para isso existe a conta de serviço — mas aqui ela só alcança uma LISTA FECHADA de caminhos. Não há
+ * Para isso existe a chave secreta do Supabase — mas aqui ela só alcança uma LISTA FECHADA de caminhos. Não há
  * acesso ao conteúdo financeiro, de agenda ou de conversas dos usuários: tentar lê-lo lança erro.
  */
 
@@ -37,7 +36,7 @@ function assertPath(path: string): void {
 }
 
 export class SystemDb {
-  constructor(private readonly client: FirestoreClient) {}
+  constructor(private readonly client: DbClient) {}
 
   get(path: string): Promise<DocData | null> {
     assertPath(path);
@@ -75,142 +74,43 @@ export class SystemDb {
   }
 }
 
-// ---- Token da conta de serviço (OAuth2 jwt-bearer) ----
-
-interface ServiceAccount {
-  client_email: string;
-  private_key: string;
-  token_uri?: string;
-}
-
-const tokenCache = new Map<string, { token: string; expiresAt: number }>();
-
-export function parseServiceAccount(raw: string): ServiceAccount {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new HttpError(503, "billing_not_configured", "Credencial de serviço inválida");
-  }
-  const sa = parsed as Partial<ServiceAccount>;
-  if (typeof sa.client_email !== "string" || typeof sa.private_key !== "string") {
-    throw new HttpError(503, "billing_not_configured", "Credencial de serviço inválida");
-  }
-  return sa as ServiceAccount;
-}
-
-export async function serviceAccountToken(
-  raw: string,
-  fetchImpl: typeof fetch,
-  nowMs: number = Date.now(),
-): Promise<string> {
-  const sa = parseServiceAccount(raw);
-  const cached = tokenCache.get(sa.client_email);
-  if (cached && cached.expiresAt - 60_000 > nowMs) return cached.token;
-
-  const audience = sa.token_uri ?? "https://oauth2.googleapis.com/token";
-  const key = await importPKCS8(sa.private_key, "RS256").catch(() => {
-    throw new HttpError(503, "billing_not_configured", "Credencial de serviço inválida");
-  });
-  const iat = Math.floor(nowMs / 1000);
-  const assertion = await new SignJWT({ scope: "https://www.googleapis.com/auth/datastore" })
-    .setProtectedHeader({ alg: "RS256", typ: "JWT" })
-    .setIssuer(sa.client_email)
-    .setSubject(sa.client_email)
-    .setAudience(audience)
-    .setIssuedAt(iat)
-    .setExpirationTime(iat + 3600)
-    .sign(key);
-
-  let response: Response;
-  try {
-    response = await fetchImpl(audience, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }).toString(),
-      signal: AbortSignal.timeout(8000),
-    });
-  } catch {
-    throw new HttpError(502, "upstream_error", "Falha ao obter credencial de serviço");
-  }
-  if (!response.ok) throw new HttpError(502, "upstream_error", "Falha ao obter credencial de serviço");
-  const body = (await response.json().catch(() => ({}))) as { access_token?: string; expires_in?: number };
-  if (typeof body.access_token !== "string") throw new HttpError(502, "upstream_error", "Falha ao obter credencial de serviço");
-  tokenCache.set(sa.client_email, { token: body.access_token, expiresAt: nowMs + (body.expires_in ?? 3600) * 1000 });
-  return body.access_token;
-}
-
-export function clearServiceAccountTokenCache(): void {
-  tokenCache.clear();
-}
-
 /**
- * Cria o cliente privilegiado restrito. Com `FIRESTORE_BASE_URL` (emulador/testes) usa o token "owner" do
- * emulador, que ignora as regras; em produção exige `GOOGLE_SERVICE_ACCOUNT_JSON`.
+ * Cliente privilegiado restrito: usa a chave secreta (`SUPABASE_SECRET_KEY`), que o PostgREST traduz para o papel
+ * `service_role`. Sem a chave, as operações que dependem dela ficam indisponíveis (503), nunca abertas.
  */
-async function serviceToken(env: Env, fetchImpl: typeof fetch): Promise<string> {
-  if (env.FIRESTORE_BASE_URL) return "owner";
-  if (!env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+function privilegedClient(env: Env, fetchImpl: typeof fetch): DbClient {
+  if (!env.SUPABASE_SECRET_KEY) {
     throw new HttpError(503, "billing_not_configured", "Cobrança ainda não está configurada");
   }
-  return serviceAccountToken(env.GOOGLE_SERVICE_ACCOUNT_JSON, fetchImpl);
+  return new DbClient(env, { accessToken: "", apiKey: env.SUPABASE_SECRET_KEY, privileged: true, fetchImpl });
 }
 
 export async function createSystemDb(env: Env, fetchImpl: typeof fetch = fetch): Promise<SystemDb> {
-  return new SystemDb(new FirestoreClient(env, { idToken: await serviceToken(env, fetchImpl), fetchImpl }));
+  return new SystemDb(privilegedClient(env, fetchImpl));
 }
 
 // ---- Exclusão de conta (LGPD) ----
 
 /**
  * Apaga TUDO de UM usuário. É o único trecho privilegiado que alcança conteúdo de usuário, e só o do próprio
- * solicitante: está preso ao uid do token (`users/{uid}/**` e `subscriptions/{uid}`), pois as Security Rules
- * proíbem o próprio cliente de excluir perfil, trilha de auditoria e consentimentos.
+ * solicitante: está preso ao uid do token. Remove a linha de `auth.users`; as chaves estrangeiras
+ * `ON DELETE CASCADE` apagam perfil, finanças, agenda, conversas, trilha de auditoria e consentimentos — itens que
+ * as políticas RLS proíbem o próprio cliente de excluir.
  */
 export class UserErasure {
-  private readonly prefix: string;
-
   constructor(
-    private readonly client: FirestoreClient,
+    private readonly client: DbClient,
     private readonly uid: string,
   ) {
-    if (!uid || uid.includes("/") || uid.length > 128) throw new SystemAccessError("uid inválido");
-    this.prefix = `users/${uid}`;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid)) throw new SystemAccessError("uid inválido");
   }
 
-  private guard(path: string): void {
-    if (path !== this.prefix && !path.startsWith(`${this.prefix}/`) && path !== `subscriptions/${this.uid}`) {
-      throw new SystemAccessError(path);
-    }
-  }
-
-  /** Remove o documento e, recursivamente, todas as suas subcoleções. Devolve quantos documentos foram apagados. */
-  private async eraseTree(path: string): Promise<number> {
-    this.guard(path);
-    let count = 0;
-    for (const collection of await this.client.listCollectionIds(path)) {
-      for (let round = 0; round < 1000; round += 1) {
-        const docs = await this.client.query(path, { collection, limit: 200 });
-        if (docs.length === 0) break;
-        for (const doc of docs) count += await this.eraseTree(`${path}/${collection}/${doc.id}`);
-        await this.client.commit(docs.map((d) => ({ path: `${path}/${collection}/${d.id}`, delete: true })));
-        count += docs.length;
-      }
-    }
-    return count;
-  }
-
-  async eraseAll(): Promise<number> {
-    const count = await this.eraseTree(this.prefix);
-    this.guard(`subscriptions/${this.uid}`);
-    await this.client.commit([
-      { path: this.prefix, delete: true },
-      { path: `subscriptions/${this.uid}`, delete: true },
-    ]);
-    return count + 1;
+  /** Devolve quantos registros foram apagados (inclui o usuário). Idempotente: usuário inexistente => 0. */
+  eraseAll(): Promise<number> {
+    return this.client.eraseUser(this.uid);
   }
 }
 
 export async function createUserErasure(env: Env, fetchImpl: typeof fetch, uid: string): Promise<UserErasure> {
-  return new UserErasure(new FirestoreClient(env, { idToken: await serviceToken(env, fetchImpl), fetchImpl }), uid);
+  return new UserErasure(privilegedClient(env, fetchImpl), uid);
 }

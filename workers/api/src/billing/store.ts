@@ -9,7 +9,7 @@ import {
   type SubscriptionStatus,
   type SubscriptionView,
 } from "@lifeflow/shared";
-import type { DocData } from "../firestore";
+import type { DocData } from "../db";
 
 export interface Reader {
   get(path: string): Promise<DocData | null>;

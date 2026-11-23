@@ -25,7 +25,7 @@ import {
   type Transaction,
 } from "@lifeflow/shared";
 import { HttpError } from "../errors";
-import type { DocData, StoredDoc, WriteOp } from "../firestore";
+import type { DocData, StoredDoc, WriteOp } from "../db";
 import { allow, json, parseBody } from "../http";
 import { balanceOp, transactionDoc } from "../finance/ledger";
 import {

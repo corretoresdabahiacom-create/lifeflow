@@ -8,13 +8,13 @@ import {
 import {
   defaultKeyResolver,
   extractBearerToken,
-  verifyFirebaseToken,
+  verifySupabaseToken,
   type AuthenticatedUser,
   type KeyResolver,
 } from "./auth";
 import type { Env } from "./env";
 import { HttpError } from "./errors";
-import { FirestoreClient, type DocData } from "./firestore";
+import { DbClient, type DocData } from "./db";
 import { handleAgenda } from "./agenda";
 import { handleAi } from "./ai/routes";
 import type { PaymentProvider } from "./billing/provider";
@@ -38,13 +38,14 @@ export interface AppDeps {
   payments?: PaymentProvider;
 }
 
-/** Itens indispensáveis para operar em produção. Vazio = pronto. (Emulador/testes via FIRESTORE_BASE_URL ficam isentos.) */
+/** Itens indispensáveis para operar em produção. Vazio = pronto.  */
 export function readinessProblems(env: Env): string[] {
   const problems: string[] = [];
-  if (!env.FIREBASE_PROJECT_ID || env.FIREBASE_PROJECT_ID.startsWith("demo-")) problems.push("firebase_project");
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.(co|in)\/?$/.test(env.SUPABASE_URL ?? "")) problems.push("supabase_url");
+  if (!env.SUPABASE_PUBLISHABLE_KEY) problems.push("supabase_publishable_key");
   if (!/^https:\/\//.test(env.ALLOWED_ORIGIN)) problems.push("allowed_origin_https");
-  if (env.FIRESTORE_BASE_URL) problems.push("firestore_base_url_override");
-  if (!env.GOOGLE_SERVICE_ACCOUNT_JSON) problems.push("service_account");
+  if (env.JWKS_URL) problems.push("jwks_url_override");
+  if (!env.SUPABASE_SECRET_KEY) problems.push("supabase_secret_key");
   if (!env.MERCADOPAGO_ACCESS_TOKEN || !env.MERCADOPAGO_WEBHOOK_SECRET) problems.push("payments");
   if (!env.WEB_BASE_URL || !env.API_PUBLIC_URL) problems.push("public_urls");
   if (!env.DEEPSEEK_API_KEY) problems.push("llm");
@@ -102,11 +103,11 @@ export function createHandler(deps: AppDeps = {}) {
 
       // Autenticação: a identidade vem somente do token validado, nunca do cliente.
       const token = extractBearerToken(request);
-      const user: AuthenticatedUser = await verifyFirebaseToken(token, env, resolveKeys(env));
+      const user: AuthenticatedUser = await verifySupabaseToken(token, env, resolveKeys(env));
       uid = user.uid;
 
-      const db = new FirestoreClient(env, {
-        idToken: token,
+      const db = new DbClient(env, {
+        accessToken: token,
         ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
       });
 
@@ -132,13 +133,13 @@ async function route(
   request: Request,
   url: URL,
   user: AuthenticatedUser,
-  db: FirestoreClient,
+  db: DbClient,
   now: () => Date,
   env: Env,
   deps: AppDeps,
 ): Promise<Response> {
   const method = request.method;
-  // Todos os caminhos do Firestore são derivados do uid do token.
+  // Todos os caminhos de documento são derivados do uid do token.
   const profilePath = `users/${user.uid}`;
   const prefsPath = `users/${user.uid}/preferences/app`;
 

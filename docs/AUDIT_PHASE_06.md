@@ -1,5 +1,7 @@
 # AUDITORIA DE LANÇAMENTO (Fase 6)
 
+> **Histórico:** este documento descreve o estado em Firebase/Firestore. Em 2026-11-23 o banco e o login migraram para o Supabase (ver `DECISIONS.md` D-011).
+
 Auditoria feita sobre o código da branch `develop` (revisão de código, buscas automatizadas, `pnpm audit` e suítes de
 teste). **Não foi uma auditoria externa nem um teste de invasão**; não substitui revisão jurídica (LGPD) nem pentest.
 

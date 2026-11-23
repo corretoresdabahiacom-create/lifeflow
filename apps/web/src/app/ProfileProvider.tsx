@@ -2,7 +2,7 @@ import type { Profile, ProfileInput } from "@lifeflow/shared";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAuth } from "../auth/context";
 import { ApiError } from "../lib/api";
-import { apiBaseUrl } from "../lib/firebase";
+import { apiBaseUrl } from "../lib/supabase";
 import { defaultProfileFor } from "../lib/profileDefaults";
 import { useApi } from "./ApiProvider";
 

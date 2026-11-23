@@ -1,52 +1,47 @@
 import { defineBillingSuite, FakePayments, type BillingWorld, type BillingWorldOptions } from "./billing.suite";
 import { ScriptedLLM, ScriptedSTT } from "./ai.suite";
 import { Client } from "./finance.suite";
-import { env, makeApp, signToken, uidOfToken, type Clock, type Signer } from "./helpers";
-import { createSystemDb } from "../src/system";
-import { FirestoreClient } from "../src/firestore";
+import { makeApp, type Clock, type Signer } from "./helpers";
 import { defineAccountSuite } from "./account.suite";
 import { defineSecuritySuite } from "./security.suite";
+import { createStackUser, stackEnv, stackRaw, stackSystemDb } from "./stack";
 
-/** Mesma suíte contra o EMULADOR REAL do Firestore. Execução: `pnpm test:integration`. */
-const host = process.env["FIRESTORE_EMULATOR_HOST"];
-if (!host) {
-  throw new Error("FIRESTORE_EMULATOR_HOST ausente: rode `pnpm test:integration` (ele inicia o emulador).");
-}
-
-async function emulatorWorld(signer: Signer, options: BillingWorldOptions): Promise<BillingWorld> {
+/** Mesmas suítes contra o Supabase REAL. Execução: `pnpm test:integration`. */
+async function stackWorld(_signer: Signer, options: BillingWorldOptions): Promise<BillingWorld> {
   const clock: Clock = { now: new Date("2026-11-09T12:00:00.000Z") };
   const llm = new ScriptedLLM();
   const stt = new ScriptedSTT();
   const payments = new FakePayments();
   const envOverride = {
-    FIRESTORE_BASE_URL: `http://${host}`,
+    ...stackEnv,
     PAYMENT_PROVIDER: "mercadopago",
     WEB_BASE_URL: "https://app.lifeflow.test",
     API_PUBLIC_URL: "https://api.lifeflow.test",
   };
-  const app = makeApp(signer, fetch, envOverride, clock, { llm, stt, payments });
-  const suffix = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
-  const a = await signToken(signer, { uid: `userA_${suffix}`, email: options.noEmailForA ? "" : "user@example.com" });
-  const b = await signToken(signer, { uid: `userB_${suffix}`, email: "bia@example.com" });
-  const admin = await signToken(signer, { uid: `admin_${suffix}`, email: "admin@example.com", admin: true });
+  const app = makeApp(null, fetch, envOverride, clock, { llm, stt, payments });
+  const [a, b, admin] = await Promise.all([
+    createStackUser("userA", options.noEmailForA ? { noEmail: true } : {}),
+    createStackUser("userB"),
+    createStackUser("admin", { admin: true }),
+  ]);
   return {
     clock,
     payments,
     llm,
     stt,
-    A: new Client(app, a),
-    B: new Client(app, b),
-    Admin: new Client(app, admin),
-    uidA: uidOfToken(a),
-    uidB: uidOfToken(b),
+    A: new Client(app, a.token),
+    B: new Client(app, b.token),
+    Admin: new Client(app, admin.token),
+    uidA: a.uid,
+    uidB: b.uid,
     app,
-    raw: new FirestoreClient({ ...env, ...envOverride }, { idToken: "owner", fetchImpl: fetch }),
-    sys: () => createSystemDb({ ...env, ...envOverride }, fetch),
+    raw: stackRaw(),
+    sys: () => stackSystemDb(),
   };
 }
 
-defineBillingSuite("assinaturas, limites e painel admin (emulador real do Firestore + Security Rules)", emulatorWorld, { fake: false });
+defineBillingSuite("assinaturas, limites e painel admin (Supabase real: GoTrue + PostgREST + RLS)", stackWorld, { fake: false });
 
-defineAccountSuite("exportação e exclusão de conta (emulador real do Firestore + Security Rules)", emulatorWorld, { rawClient: (w) => w.raw });
+defineAccountSuite("exportação e exclusão de conta (Supabase real: GoTrue + PostgREST + RLS)", stackWorld, { rawClient: (w) => w.raw, fake: false });
 
-defineSecuritySuite("segurança e isolamento entre usuários (emulador real do Firestore + Security Rules)", emulatorWorld);
+defineSecuritySuite("segurança e isolamento entre usuários (Supabase real: GoTrue + PostgREST + RLS)", stackWorld);

@@ -5,10 +5,10 @@
 
 ## Estado (Fase 2)
 
-Nenhum serviço pago é usado. O desenvolvimento roda com testes locais, mocks e o emulador do Firestore
+Nenhum serviço pago é usado. O desenvolvimento roda com testes locais, mocks e Postgres local (PGlite) e o Supabase local
 (na CI do GitHub); nenhuma API paga foi chamada.
 
-### Consumo de leituras/escritas do Firestore por operação (estimativa pelo código, não medida)
+### Consumo de leituras/escritas por operação (estimativa pelo código da época do Firestore; em Postgres a cobrança é por CPU/armazenamento/egress, não por documento — revisar)
 
 | Operação | Leituras de documento | Escritas |
 |---|---|---|
@@ -32,8 +32,8 @@ requisição no plano gratuito, de memória; **não verificado** (ver D-006).
 | Serviço | Uso previsto | Observação |
 |---|---|---|
 | Cloudflare Pages / Workers | Frontend e API | Há plano gratuito com limites; confirmar nos preços oficiais antes do deploy |
-| Firebase Auth | Login por e-mail/senha | Verificar cotas do plano atual; login por SMS é cobrado e **não** é usado |
-| Firestore | Dados do usuário | Cobrança por leitura/escrita/armazenamento, com cota gratuita diária; a Fase 6 deve monitorar |
+| Supabase Auth | Login por e-mail/senha | Verificar cotas (MAU) do plano atual; login por SMS é cobrado e **não** é usado |
+| Supabase Postgres | Dados do usuário | Plano por projeto (CPU/RAM, armazenamento, egress, backups); **valores não consultados** — conferir nos preços oficiais antes do deploy |
 | LLM (DeepSeek) | Fase 4 | Pago por uso; só com autorização e limites por plano |
 | Transcrição (Groq) | Fase 4 | Idem |
 | E-mail (Resend) | Fases 3 e 5 | Verificar plano gratuito e limites |

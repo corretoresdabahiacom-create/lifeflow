@@ -1,5 +1,7 @@
 # FASE 2 — FINANCEIRO
 
+> **Histórico:** este documento descreve o estado em Firebase/Firestore. Em 2026-11-23 o banco e o login migraram para o Supabase (ver `DECISIONS.md` D-011).
+
 **Status:** implementada e **aprovada pelo responsável**. (A Fase 3 foi iniciada depois.)
 Comandos obrigatórios e testes automatizados aprovados (inclusive no emulador real do Firestore, na CI).
 **O checklist manual no navegador com Firebase real não foi executado** (ver "Checklist"). Decisões: `DECISIONS.md` D-006.

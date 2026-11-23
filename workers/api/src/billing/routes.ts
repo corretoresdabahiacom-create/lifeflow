@@ -6,7 +6,7 @@ import {
 } from "@lifeflow/shared";
 import type { Env } from "../env";
 import { HttpError } from "../errors";
-import type { DocData } from "../firestore";
+import type { DocData } from "../db";
 import { pathsFor, type Ctx } from "../finance/common";
 import { allow, json, parseBody } from "../http";
 import { createSystemDb, type SystemDb } from "../system";

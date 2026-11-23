@@ -1,7 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { useAuth } from "../auth/context";
 import { createApiClient, type ApiClient } from "../lib/api";
-import { apiBaseUrl } from "../lib/firebase";
+import { apiBaseUrl } from "../lib/supabase";
 
 const ApiContext = createContext<ApiClient | null>(null);
 

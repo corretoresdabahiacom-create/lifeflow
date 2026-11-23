@@ -1,64 +1,74 @@
-import { exportPKCS8, generateKeyPair, jwtVerify, importSPKI, exportSPKI } from "jose";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { HttpError } from "../src/errors";
-import { clearServiceAccountTokenCache, createSystemDb, parseServiceAccount, serviceAccountToken } from "../src/system";
+import { describe, expect, it, vi } from "vitest";
+import { DbClient } from "../src/db";
+import { SystemAccessError, SystemDb, UserErasure, createSystemDb, createUserErasure } from "../src/system";
 import { env } from "./helpers";
 
-async function account() {
-  const { publicKey, privateKey } = await generateKeyPair("RS256", { extractable: true });
-  const raw = JSON.stringify({ client_email: "sa@proj.iam.gserviceaccount.com", private_key: await exportPKCS8(privateKey), token_uri: "https://oauth.test/token" });
-  return { raw, publicPem: await exportSPKI(publicKey) };
+const UID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+function recording() {
+  const calls: Array<{ url: string; headers: Headers; body: unknown }> = [];
+  const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(input), headers: new Headers(init?.headers), body: JSON.parse(String(init?.body ?? "{}")) });
+    return new Response(String(input).endsWith("lf_count") || String(input).endsWith("lf_erase_user") ? "7" : String(input).endsWith("lf_query") ? "[]" : "null", { status: 200 });
+  }) as unknown as typeof fetch;
+  const db = new DbClient(env, { accessToken: "", apiKey: "sb_secret_t", privileged: true, fetchImpl });
+  return { calls, db, fetchImpl };
 }
 
-describe("conta de serviço (caminho privilegiado)", () => {
-  beforeEach(() => clearServiceAccountTokenCache());
-
-  it("troca um JWT assinado (RS256, escopo datastore) por token de acesso e o reaproveita em cache", async () => {
-    const { raw, publicPem } = await account();
-    let assertion = "";
-    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
-      assertion = new URLSearchParams(String(init.body)).get("assertion") ?? "";
-      return new Response(JSON.stringify({ access_token: "ya29.fake", expires_in: 3600 }), { status: 200 });
-    });
-    const now = Date.parse("2026-11-09T12:00:00Z");
-    expect(await serviceAccountToken(raw, fetchImpl as unknown as typeof fetch, now)).toBe("ya29.fake");
-    const { payload } = await jwtVerify(assertion, await importSPKI(publicPem, "RS256"), { audience: "https://oauth.test/token", currentDate: new Date(now) });
-    expect(payload).toMatchObject({ iss: "sa@proj.iam.gserviceaccount.com", scope: "https://www.googleapis.com/auth/datastore" });
-    expect(fetchImpl.mock.calls[0]![0]).toBe("https://oauth.test/token");
-    expect(new URLSearchParams(String((fetchImpl.mock.calls[0]![1] as RequestInit).body)).get("grant_type")).toBe("urn:ietf:params:oauth:grant-type:jwt-bearer");
-    await serviceAccountToken(raw, fetchImpl as unknown as typeof fetch, now + 10 * 60_000);
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    await serviceAccountToken(raw, fetchImpl as unknown as typeof fetch, now + 3600_000);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-  });
-
-  it("credencial inválida ou falha no endpoint viram erros HTTP claros (sem vazar a chave)", async () => {
-    const { raw } = await account();
-    expect(() => parseServiceAccount("não json")).toThrow(HttpError);
-    expect(() => parseServiceAccount("{}")).toThrow(HttpError);
-    const bad = JSON.stringify({ client_email: "a@b", private_key: "lixo" });
-    await expect(serviceAccountToken(bad, fetch)).rejects.toMatchObject({ status: 503 });
-    await expect(serviceAccountToken(raw, (async () => new Response("{}", { status: 500 })) as unknown as typeof fetch)).rejects.toMatchObject({ status: 502 });
-    await expect(serviceAccountToken(raw, (async () => { throw new Error("rede"); }) as unknown as typeof fetch)).rejects.toMatchObject({ status: 502 });
-    await expect(serviceAccountToken(raw, (async () => new Response(JSON.stringify({}), { status: 200 })) as unknown as typeof fetch)).rejects.toMatchObject({ status: 502 });
-  });
-
-  it("sem emulador e sem credencial, o caminho privilegiado fica indisponível (503 billing_not_configured)", async () => {
-    const { FIRESTORE_BASE_URL: _drop, ...bare } = env;
+describe("chave secreta (caminho privilegiado restrito)", () => {
+  it("sem SUPABASE_SECRET_KEY o caminho privilegiado fica indisponível (503 billing_not_configured)", async () => {
+    const { SUPABASE_SECRET_KEY: _drop, ...bare } = env;
     await expect(createSystemDb(bare)).rejects.toMatchObject({ status: 503, code: "billing_not_configured" });
+    await expect(createUserErasure(bare, fetch, UID)).rejects.toMatchObject({ status: 503 });
   });
 
-  it("em produção usa o token da conta de serviço contra o Firestore real", async () => {
-    const { raw } = await account();
-    const { FIRESTORE_BASE_URL: _drop, ...bare } = env;
-    const seen: string[] = [];
-    const fetchImpl = (async (url: string, init: RequestInit) => {
-      if (url === "https://oauth.test/token") return new Response(JSON.stringify({ access_token: "ya29.prod", expires_in: 3600 }));
-      seen.push(String((init.headers as Record<string, string>)["Authorization"] ?? new Headers(init.headers).get("Authorization")));
-      return new Response(JSON.stringify({ name: "x", fields: {} }), { status: 200 });
-    }) as unknown as typeof fetch;
-    const sys = await createSystemDb({ ...bare, GOOGLE_SERVICE_ACCOUNT_JSON: raw }, fetchImpl);
+  it("com a chave, as chamadas levam só `apikey: sb_secret_…` (sem Authorization de usuário)", async () => {
+    const calls: Headers[] = [];
+    const fetchImpl = (async (_u: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(new Headers(init?.headers));
+      return new Response("null", { status: 200 });
+    }) as typeof fetch;
+    const sys = await createSystemDb({ ...env, SUPABASE_SECRET_KEY: "sb_secret_prod" }, fetchImpl);
     await sys.get("plans/pro");
-    expect(seen).toEqual(["Bearer ya29.prod"]);
+    expect(calls[0]?.get("apikey")).toBe("sb_secret_prod");
+    expect(calls[0]?.get("Authorization")).toBeNull();
+  });
+});
+
+describe("SystemDb: lista fechada de caminhos", () => {
+  it("permite plans/subscriptions/webhookEvents/adminLogs e billingPayments de um usuário", async () => {
+    const { db, calls } = recording();
+    const sys = new SystemDb(db);
+    await sys.get("plans/pro");
+    await sys.commit([{ path: "subscriptions/x", fields: { status: "active" }, merge: true }, { path: `users/${UID}/billingPayments/p1`, fields: {} }]);
+    await sys.query("", { collection: "subscriptions", limit: 10 });
+    await sys.query(`users/${UID}`, { collection: "billingPayments", limit: 10 });
+    await sys.group({ collection: "aiUsage", limit: 10 });
+    expect(await sys.count("users")).toBe(7);
+    expect(calls.length).toBeGreaterThan(4);
+  });
+
+  it("NEGA conteúdo pessoal (finanças, agenda, conversas) e coleções fora da lista, sem chamar o banco", async () => {
+    const { db, fetchImpl } = recording();
+    const sys = new SystemDb(db);
+    expect(() => sys.get(`users/${UID}/accounts/a1`)).toThrow(SystemAccessError);
+    expect(() => sys.get(`users/${UID}`)).toThrow(SystemAccessError);
+    expect(() => sys.commit([{ path: `users/${UID}/transactions/t1`, delete: true }])).toThrow(SystemAccessError);
+    expect(() => sys.query(`users/${UID}`, { collection: "transactions", limit: 5 })).toThrow(SystemAccessError);
+    expect(() => sys.query("", { collection: "users", limit: 5 })).toThrow(SystemAccessError);
+    expect(() => sys.group({ collection: "transactions", limit: 5 })).toThrow(SystemAccessError);
+    expect(() => sys.count("transactions")).toThrow(SystemAccessError);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe("UserErasure", () => {
+  it("só aceita uid no formato UUID e chama lf_erase_user uma vez", async () => {
+    const { db, calls } = recording();
+    for (const bad of ["", "../x", "a/b", "userA", `${UID}/accounts`]) expect(() => new UserErasure(db, bad), bad).toThrow(SystemAccessError);
+    expect(await new UserErasure(db, UID).eraseAll()).toBe(7);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe("https://lifeflow-test.supabase.co/rest/v1/rpc/lf_erase_user");
+    expect(calls[0]?.body).toEqual({ p_uid: UID });
   });
 });

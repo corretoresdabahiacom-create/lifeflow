@@ -1,5 +1,7 @@
 # FASE 1 — FUNDAÇÃO
 
+> **Histórico:** este documento descreve o estado em Firebase/Firestore. Em 2026-11-23 o banco e o login migraram para o Supabase (ver `DECISIONS.md` D-011).
+
 **Status:** implementada; **aguardando aprovação do responsável**. Comandos obrigatórios e testes de
 regras aprovados (estes na CI). **O checklist manual não foi executado** (precisa de projeto Firebase
 real; ver "Pendências para fechar a fase"). A Fase 2 não foi iniciada.

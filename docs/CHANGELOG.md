@@ -2,6 +2,13 @@
 
 ## [Não lançado]
 
+### Migração para o Supabase — D-011 (2026-11-23)
+- Firestore → **Supabase Postgres** (26 tabelas, RLS, gatilhos, funções `lf_get/lf_commit/lf_query/lf_count/lf_erase_user`) e Firebase Auth → **Supabase Auth** (JWT ES256/RS256 via JWKS).
+- Worker: `firestore.ts` → `db.ts` (mesma interface de documentos, agora RPC com o JWT do usuário); `service_role` só para `SystemDb` e `lf_erase_user`. Front: `@supabase/supabase-js` só para login; `firebase` removido.
+- Testes: 137 testes de Security Rules removidos; 44 testes de RLS/API do banco (PGlite) adicionados; suíte do Worker roda em Postgres local. Total local: 498.
+- CI/deploy/backup: `supabase-integration`, `supabase-recovery`, `supabase db push`, `pg_dump`. Scripts `backup-db`/`restore-db`.
+- **Não executado:** projeto Supabase real, `supabase start`/GoTrue/PostgREST reais, `supabase db push`, pg_dump/pg_restore, jobs novos da CI. Nenhum dado foi migrado (não havia dados reais).
+
 ### Fase 6 — Lançamento (2026-11-18)
 - Auditoria (`AUDIT_PHASE_06.md`); dependências de produção corrigidas (zod 4, react-router 7, grpc-js).
 - **Exportação completa dos dados** e **exclusão de conta** (LGPD): API, tela em Ajustes, `UserErasure` preso ao uid. D-010.

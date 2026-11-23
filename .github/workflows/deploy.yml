@@ -1,7 +1,7 @@
 name: Deploy
 
 # Deploy MANUAL e com aprovação (proteção do "environment" no GitHub). Produção só a partir de `main`.
-# ATENÇÃO: este workflow NUNCA foi executado (não havia contas Cloudflare/Firebase). Faça o primeiro deploy em staging.
+# ATENÇÃO: este workflow NUNCA foi executado (não havia contas Cloudflare/Supabase). Faça o primeiro deploy em staging.
 on:
   workflow_dispatch:
     inputs:
@@ -36,20 +36,14 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - uses: actions/setup-java@v4
+      - uses: supabase/setup-cli@v1
         with:
-          distribution: temurin
-          java-version: 21
+          version: latest
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm test:rules
-        env:
-          FIREBASE_TELEMETRY_COLLECTION_ENABLED: "false"
       - run: pnpm test:integration
-        env:
-          FIREBASE_TELEMETRY_COLLECTION_ENABLED: "false"
 
   deploy:
     name: deploy (${{ inputs.environment }})
@@ -59,8 +53,8 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_DEPLOY_SA_JSON }}
-      FIREBASE_TELEMETRY_COLLECTION_ENABLED: "false"
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -72,22 +66,24 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # 1) Regras e índices do Firestore PRIMEIRO: o Worker novo depende deles.
-      - name: Regras e índices do Firestore
+      # 1) Migrações do banco PRIMEIRO: o Worker novo depende do esquema, da RLS e das funções lf_*.
+      #    Só migrações novas e aditivas; `db push` recusa aplicar fora de ordem. Faça backup antes (docs/BACKUP_RECOVERY.md).
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Migrações do Supabase
         run: |
-          printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > "$RUNNER_TEMP/sa.json"
-          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
-          cd firebase
-          pnpm exec firebase deploy --only firestore:rules,firestore:indexes --project "${{ vars.FIREBASE_PROJECT_ID }}" --non-interactive
-          rm -f "$RUNNER_TEMP/sa.json"
+          supabase link --project-ref "${{ vars.SUPABASE_PROJECT_REF }}"
+          supabase db push --yes
 
-      # 2) API (Worker). Segredos (chaves de IA, Mercado Pago, conta de serviço) ficam no Cloudflare:
+      # 2) API (Worker). Segredos (chaves de IA, Mercado Pago, chave secreta do Supabase) ficam no Cloudflare:
       #    `wrangler secret put <NOME>` — nunca neste arquivo (ver docs/DEPLOYMENT.md).
       - name: Worker da API
         working-directory: workers/api
         run: >
           pnpm exec wrangler deploy
-          --var FIREBASE_PROJECT_ID:${{ vars.FIREBASE_PROJECT_ID }}
+          --var SUPABASE_URL:${{ vars.SUPABASE_URL }}
+          --var SUPABASE_PUBLISHABLE_KEY:${{ vars.SUPABASE_PUBLISHABLE_KEY }}
           --var ALLOWED_ORIGIN:${{ vars.WEB_BASE_URL }}
           --var WEB_BASE_URL:${{ vars.WEB_BASE_URL }}
           --var API_PUBLIC_URL:${{ vars.API_PUBLIC_URL }}
@@ -96,10 +92,8 @@ jobs:
       - name: Build do app web
         run: pnpm --filter @lifeflow/web build
         env:
-          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
-          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
-          VITE_FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
-          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+          VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
           VITE_API_BASE_URL: ${{ vars.API_PUBLIC_URL }}
       - name: Publicar no Cloudflare Pages
         run: pnpm --filter @lifeflow/web exec wrangler pages deploy dist --project-name "${{ vars.PAGES_PROJECT }}" --branch "${{ inputs.environment == 'production' && 'main' || 'staging' }}"

@@ -1,5 +1,7 @@
 # FASE 6 — LANÇAMENTO
 
+> **Histórico:** este documento descreve o estado em Firebase/Firestore. Em 2026-11-23 o banco e o login migraram para o Supabase (ver `DECISIONS.md` D-011).
+
 **Status:** implementada, **aguardando aprovação**. **O produto NÃO foi implantado** e nenhum serviço real
 (Firebase, Cloudflare, Mercado Pago, DeepSeek, Groq) foi usado: não existem credenciais neste ambiente.
 O que a fase entrega é a **preparação para o lançamento**: auditoria, lacunas fechadas, testes e runbooks.

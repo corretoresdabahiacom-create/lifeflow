@@ -1,5 +1,7 @@
 # FASE 3 — AGENDA
 
+> **Histórico:** este documento descreve o estado em Firebase/Firestore. Em 2026-11-23 o banco e o login migraram para o Supabase (ver `DECISIONS.md` D-011).
+
 **Status:** implementada; **aguardando aprovação do responsável**. A Fase 4 não foi iniciada.
 Comandos obrigatórios e testes automatizados aprovados (inclusive no emulador real do Firestore, na CI).
 **O checklist manual no navegador com Firebase real não foi executado** (ver "Checklist").

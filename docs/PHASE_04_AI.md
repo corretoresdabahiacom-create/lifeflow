@@ -1,5 +1,7 @@
 # FASE 4 — ASSISTENTE DE IA
 
+> **Histórico:** este documento descreve o estado em Firebase/Firestore. Em 2026-11-23 o banco e o login migraram para o Supabase (ver `DECISIONS.md` D-011).
+
 **Status:** implementada; **aguardando aprovação do responsável**. A Fase 5 não foi iniciada. A Fase 3 também
 segue **aguardando aprovação** (o responsável disse que a aprovará depois).
 Comandos obrigatórios e testes automatizados aprovados, inclusive no emulador real do Firestore com as regras reais (CI).

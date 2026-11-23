@@ -234,7 +234,7 @@ export function createApiClient(options: ApiClientOptions) {
 
   async function send(path: string, init: RequestInit = {}): Promise<Response> {
     for (let attempt = 0; ; attempt++) {
-      // Na segunda tentativa a renovação da sessão é feita pelo SDK do Firebase (o Worker não renova).
+      // Na segunda tentativa a renovação da sessão é feita pelo SDK do Supabase (o Worker não renova).
       const token = await options.getToken(attempt > 0);
       const headers = new Headers(init.headers);
       headers.set("Authorization", `Bearer ${token}`);

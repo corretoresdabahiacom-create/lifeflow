@@ -11,7 +11,7 @@ import {
   type TaskPriority,
 } from "@lifeflow/shared";
 import { HttpError } from "../errors";
-import type { DocData } from "../firestore";
+import type { DocData } from "../db";
 import { allow, json, parseBody } from "../http";
 import {
   assertId,

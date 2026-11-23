@@ -1,12 +1,12 @@
 import { defineFinanceSuite, Client, tokensFor, type World } from "./finance.suite";
-import { fakeFirestore, makeApp } from "./helpers";
+import { fakeSupabase, makeApp } from "./helpers";
 import type { Signer } from "./helpers";
 
 async function fakeWorld(signer: Signer): Promise<World> {
-  const fake = fakeFirestore();
+  const fake = await fakeSupabase();
   const app = makeApp(signer, ((input: RequestInfo | URL, init?: RequestInit) => fake.fetchImpl(input, init)) as typeof fetch);
   const { a, b } = await tokensFor(signer);
   return { fake, A: new Client(app, a), B: new Client(app, b) };
 }
 
-defineFinanceSuite("finanças (Firestore falso em memória)", fakeWorld, { fake: true });
+defineFinanceSuite("finanças (Supabase local (Postgres real em PGlite))", fakeWorld, { fake: true });

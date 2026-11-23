@@ -1,14 +1,15 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { readinessProblems } from "../src/app";
 import type { Env } from "../src/env";
-import { env, fakeFirestore, makeApp, makeSigner, type Signer } from "./helpers";
+import { env, makeApp, makeSigner, type Signer } from "./helpers";
 
 /** Operação: saúde, prontidão para produção e formato dos logs. */
 
 const PROD: Env = {
-  FIREBASE_PROJECT_ID: "lifeflow-prod",
+  SUPABASE_URL: "https://abcdefghijkl.supabase.co",
+  SUPABASE_PUBLISHABLE_KEY: "sb_publishable_x",
+  SUPABASE_SECRET_KEY: "sb_secret_x",
   ALLOWED_ORIGIN: "https://app.lifeflow.example",
-  GOOGLE_SERVICE_ACCOUNT_JSON: "{}",
   MERCADOPAGO_ACCESS_TOKEN: "x",
   MERCADOPAGO_WEBHOOK_SECRET: "y",
   WEB_BASE_URL: "https://app.lifeflow.example",
@@ -21,7 +22,7 @@ describe("saúde e prontidão", () => {
   beforeAll(async () => {
     signer = await makeSigner("k1");
   });
-  const app = (override: Partial<Env>) => makeApp(signer, fakeFirestore().fetchImpl, override);
+  const app = (override: Partial<Env>) => makeApp(signer, (async () => new Response("{}")) as typeof fetch, override);
 
   it("/healthz responde 200 sem autenticação e só aceita GET", async () => {
     const a = app({});
@@ -39,8 +40,7 @@ describe("saúde e prontidão", () => {
 
   it("/readyz: configuração completa de produção → 200", async () => {
     const full = { ...PROD } as Partial<Env>;
-    // makeApp mescla com o env de teste, que traz FIRESTORE_BASE_URL; em produção ele não existe.
-    const r = await app({ ...full, FIRESTORE_BASE_URL: undefined })("/readyz");
+    const r = await app(full)("/readyz");
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ status: "ready" });
     expect((await app({})("/readyz", { method: "POST" })).status).toBe(405);
@@ -48,11 +48,12 @@ describe("saúde e prontidão", () => {
 
   it("readinessProblems aponta cada item que falta, sem expor valores", () => {
     expect(readinessProblems(PROD)).toEqual([]);
-    expect(readinessProblems({ ...PROD, FIREBASE_PROJECT_ID: "demo-lifeflow" })).toContain("firebase_project");
+    expect(readinessProblems({ ...PROD, SUPABASE_URL: "http://127.0.0.1:54321" })).toContain("supabase_url");
+    expect(readinessProblems({ ...PROD, SUPABASE_PUBLISHABLE_KEY: "" })).toContain("supabase_publishable_key");
     expect(readinessProblems({ ...PROD, ALLOWED_ORIGIN: "http://localhost:5173" })).toContain("allowed_origin_https");
-    expect(readinessProblems({ ...PROD, FIRESTORE_BASE_URL: "http://127.0.0.1:8080" })).toContain("firestore_base_url_override");
-    const { GOOGLE_SERVICE_ACCOUNT_JSON: _s, MERCADOPAGO_WEBHOOK_SECRET: _w, DEEPSEEK_API_KEY: _d, API_PUBLIC_URL: _u, ...partial } = PROD;
-    expect(readinessProblems(partial as Env)).toEqual(["service_account", "payments", "public_urls", "llm"]);
+    expect(readinessProblems({ ...PROD, JWKS_URL: "http://127.0.0.1/jwks" })).toContain("jwks_url_override");
+    const { SUPABASE_SECRET_KEY: _s, MERCADOPAGO_WEBHOOK_SECRET: _w, DEEPSEEK_API_KEY: _d, API_PUBLIC_URL: _u, ...partial } = PROD;
+    expect(readinessProblems(partial as Env)).toEqual(["supabase_secret_key", "payments", "public_urls", "llm"]);
     for (const problem of readinessProblems({ ...env })) expect(problem).not.toMatch(/=|secret_value|sk-/);
   });
 

@@ -9,18 +9,16 @@ export interface AuthContextValue {
   user: SessionUser | null;
   /** true enquanto o SDK ainda restaura a sessão. */
   loading: boolean;
-  /** true quando o token traz a claim `admin` (só define o que o painel mostra; o servidor sempre confere de novo). */
+  /** true quando o token traz a `app_metadata.admin` (só define o que o painel mostra; o servidor sempre confere de novo). */
   isAdmin: boolean;
-  /** false quando as variáveis do Firebase não foram configuradas. */
+  /** false quando as variáveis do Supabase (VITE_SUPABASE_*) não foram configuradas. */
   configured: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   /** Confirma a senha do usuário logado (login recente, exigido para excluir a conta). */
   reauthenticate: (password: string) => Promise<void>;
-  /** Remove o usuário do Firebase Auth (depois que o Worker apagou os dados). */
-  deleteAuthUser: () => Promise<void>;
-  /** ID token vigente; `forceRefresh` renova a sessão pelo SDK. */
+  /** JWT de acesso vigente (o SDK renova sozinho); `forceRefresh` força a renovação da sessão. */
   getIdToken: (forceRefresh: boolean) => Promise<string>;
 }
 

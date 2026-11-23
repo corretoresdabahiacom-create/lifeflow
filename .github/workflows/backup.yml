@@ -1,7 +1,8 @@
-name: Backup do Firestore
+name: Backup do banco (Supabase)
 
-# Backup diário gerenciado (exportação para o Cloud Storage). Só roda se a variável do repositório
-# BACKUP_ENABLED for "true" — ligue DEPOIS de criar o bucket e o ensaio de restauração (docs/BACKUP_RECOVERY.md).
+# Backup lógico diário (pg_dump) do Postgres de produção, CRIPTOGRAFADO e guardado como artefato privado do workflow.
+# Só roda se a variável do repositório BACKUP_ENABLED for "true" — ligue DEPOIS do ensaio de restauração
+# (docs/BACKUP_RECOVERY.md). O Supabase também mantém backups próprios conforme o plano contratado: este é a cópia independente.
 # ATENÇÃO: NUNCA foi executado contra um projeto real.
 on:
   schedule:
@@ -12,17 +13,26 @@ permissions:
   contents: read
 
 jobs:
-  export:
+  dump:
     if: vars.BACKUP_ENABLED == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
-      - uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.BACKUP_SA_JSON }}
-      - uses: google-github-actions/setup-gcloud@v2
-      - run: bash scripts/backup-firestore.sh
+      # O pg_dump precisa ter versão >= a do servidor (Supabase usa Postgres 17).
+      - name: Cliente PostgreSQL 17
+        run: |
+          sudo apt-get install -y curl ca-certificates gnupg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+          echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update && sudo apt-get install -y postgresql-client-17
+      - run: bash scripts/backup-db.sh
         env:
-          GCP_PROJECT: ${{ vars.FIREBASE_PROJECT_ID }}
-          BACKUP_BUCKET: ${{ vars.BACKUP_BUCKET }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lifeflow-db-backup
+          path: backups/*.gpg
+          retention-days: 30
+          if-no-files-found: error

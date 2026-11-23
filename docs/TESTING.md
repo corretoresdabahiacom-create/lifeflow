@@ -12,14 +12,38 @@
 | Comando | O que roda |
 |---|---|
 | `pnpm lint` | ESLint em todo o monorepo |
-| `pnpm typecheck` | `tsc` em `shared`, `web`, `api` e `firebase` |
-| `pnpm test` | Vitest: `shared`, `web` (jsdom), `api` (Worker com Firestore falso; exclui os testes de integração) |
+| `pnpm typecheck` | `tsc` em `shared`, `web`, `api` e `db` (`supabase/`) |
+| `pnpm test` | Vitest: `shared`, `db` (RLS/gatilhos/funções no Postgres local), `web` (jsdom), `api` (Worker contra Postgres local; exclui a integração) |
 | `pnpm build` | build do frontend (Vite) e do Worker (`wrangler --dry-run`) |
-| `pnpm test:rules` | Security Rules no emulador do Firestore (exige Java 17+ e acesso a `storage.googleapis.com`) |
-| `pnpm test:integration` | Suítes do Worker (financeiro, agenda, IA, SaaS, conta, segurança/isolamento) contra o emulador real, com as regras reais (mesmos requisitos) |
-| `pnpm --filter @lifeflow/firebase-rules test:recovery` | Recuperação: semeia → exporta (backup) → emulador vazio → importa → confere documento a documento (só na CI) |
+| `pnpm test:rules` | apenas os testes do banco (`@lifeflow/db`): RLS, gatilhos, CHECKs e funções `lf_*` |
+| `pnpm test:integration` | Suítes do Worker (financeiro, agenda, IA, SaaS, conta, segurança) contra o **Supabase real local** (`supabase start`: GoTrue + PostgREST + RLS). Exige Docker e a Supabase CLI. **Só na CI** |
+| `pnpm db:recovery` | Recuperação: semeia → `pg_dump` → perda total → `pg_restore` → compara (exige Docker; só na CI) |
 
-## Estado (Fase 6)
+## Estado (migração para o Supabase, D-011 — 2026-11-23)
+
+Executado **nesta máquina** (sem Docker, sem projeto Supabase, sem rede para o Supabase):
+
+| Comando | Resultado |
+|---|---|
+| `pnpm lint` / `pnpm typecheck` / `pnpm build` | passaram |
+| `pnpm test` | shared 100 + db 44 + web 90 + api 264 = **498 passaram** |
+
+O que a suíte local prova e o que **não** prova:
+
+- **Banco de verdade, PostgREST de mentira.** `supabase/harness` sobe o PostgreSQL real (PGlite, WebAssembly) com as MESMAS migrações
+  de `supabase/migrations`, emula o que o Supabase fornece (papéis `anon/authenticated/service_role`, `auth.users`, `auth.uid()`) e uma
+  versão mínima do PostgREST (`/rest/v1/rpc/lf_*`: papel e claims por requisição, mapeamento SQLSTATE → HTTP). A RLS, os gatilhos, os
+  CHECKs, as FKs e as funções `lf_*` são **executados de verdade** em cada teste do Worker.
+- `supabase/tests/api.test.ts` (21) e `rls.test.ts` (23) substituem os 137 testes das antigas Security Rules: isolamento A×B, acesso anônimo,
+  campos imutáveis, transições, tabelas só de inclusão, DELETE proibido, tabelas só de serviço, `service_role`.
+- O Worker é testado por `finance`/`agenda`/`ai`/`billing`/`account`/`security` `.suite.ts` (as mesmas suítes de antes) com `fakeSupabase()` em
+  `workers/api/test/helpers.ts`; tokens de teste têm o formato do Supabase (`iss`, `aud=authenticated`, `role`, `app_metadata`, `amr`).
+- **NÃO coberto localmente:** verificação criptográfica do JWT pelo PostgREST, GoTrue (cadastro, login, `amr` real), cabeçalhos HTTP reais,
+  chaves `sb_*`, `supabase db push`, `pg_dump`/`pg_restore` reais, Supabase hospedado. Isso depende da CI (`pnpm test:integration`,
+  `pnpm db:recovery`), escritas mas **ainda não executadas**. Tratar a migração como "implementada e testada localmente", não como "validada".
+- Testes que forjam um token com `amr` antigo (login recente) rodam só no mundo local, pois o GoTrue real assina o próprio token.
+
+## Estado (Fase 6, histórico: Firestore)
 
 Resultados em `PHASE_06_LAUNCH.md`. Novas suítes (rodam no Firestore falso e no emulador real): `account.suite.ts`
 (exportação e exclusão de conta) e `security.suite.ts` (segurança HTTP e isolamento entre usuários em todos os módulos);

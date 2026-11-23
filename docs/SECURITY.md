@@ -7,6 +7,8 @@ proteção XSS/CSRF/injeção, secrets apenas em ambiente, auditoria, gestão de
 de endpoints administrativos, proteção contra prompt injection, sem dados financeiros em
 prompts sem necessidade.
 
+> **D-011 (2026-11-23): banco e login migraram do Firebase para o Supabase.** As linhas abaixo que citam Security Rules/Firestore/emulador são históricas; o equivalente atual é a RLS + gatilhos (`supabase/migrations`, 44 testes em Postgres local). A verificação do JWT pelo PostgREST/GoTrue reais e a RLS sob `supabase start` **ainda não foram executadas** (só na CI).
+
 ## Estado (Fases 1 e 2)
 
 | Controle | Estado |
@@ -27,14 +29,14 @@ prompts sem necessidade.
 | Garantia de que saldo = lançamentos contra cliente mal-intencionado | **Parcial**: regras não provam; há conciliação (`/v1/reconcile`); ver D-006 |
 | Rate limiting | **Aberto (A4)**: não existe no Worker; regra de borda do Cloudflare obrigatória antes do lançamento (`RUNBOOK.md`) |
 | Auditoria | Implementada: `aiLogs` (IA) e `adminLogs` (painel admin), só de inclusão |
-| Endpoints administrativos | Implementado (Fase 5): claim `admin` + auditoria |
+| Endpoints administrativos | Implementado (Fase 5): `app_metadata.admin` + auditoria |
 | Proteção contra prompt injection | Implementada e testada com modelo simulado (Fase 4) |
 
 ## Regras de repositório
 
 - Nenhuma credencial real no Git; `.env*` ignorados, exceto `.env.example`.
-- A chave web do Firebase (apiKey) e o `projectId` são identificadores públicos de cliente,
-  não segredos; a segurança vem das Security Rules. Ainda assim não há valores reais no Git.
+- A URL do Supabase e a chave **publicável** (`sb_publishable_…`) são identificadores públicos de cliente,
+  não segredos; a segurança vem da RLS. A chave **secreta** só existe como secret do Worker. Ainda assim não há valores reais no Git.
 - Operações privilegiadas, quando necessárias, serão restritas e auditadas. Não existe
   caminho genérico de bypass das regras.
 
@@ -74,8 +76,8 @@ Não afirmar conformidade com a LGPD sem revisão jurídica e operacional.
   (a decidir com a revisão de privacidade, Fase 6).
 - **Dados enviados ao provedor de LLM:** o texto da conversa e os resultados das ferramentas consultadas (valores,
   descrições, títulos). Isso precisa constar na política de privacidade; **não** há revisão jurídica.
-- **Limite conhecido:** o cliente tem o próprio token do Firestore, então um cliente malicioso poderia gravar
-  diretamente os próprios documentos de IA dentro do que as regras permitem (afeta só o próprio usuário).
+- **Limite conhecido:** o cliente tem o próprio JWT do Supabase, então um cliente malicioso poderia gravar
+  diretamente os próprios documentos de IA dentro do que a RLS e os gatilhos permitem (afeta só o próprio usuário).
 
 ## SaaS e administração (Fase 5)
 
@@ -97,8 +99,7 @@ Não afirmar conformidade com a LGPD sem revisão jurídica e operacional.
 
 Auditoria completa em [`AUDIT_PHASE_06.md`](AUDIT_PHASE_06.md). Resumo do que mudou:
 
-- **Dependências:** zod 4, react-router 7 e override do `@grpc/grpc-js`; resta 1 aviso do `firebase` (provável falso
-  positivo) e avisos só de desenvolvimento.
+- **Dependências:** zod 4, react-router 7 e override do `@grpc/grpc-js`; o pacote `firebase` foi removido na D-011; restam só avisos de desenvolvimento (reauditar com `pnpm audit`).
 - **Exclusão de conta e exportação (LGPD):** `POST /v1/account/delete` exige a frase de confirmação **e login recente**
   (≤ 5 min, `auth_time` do token); cancela a cobrança no provedor **antes** de apagar (se falhar, nada é apagado);
   `UserErasure` é o único trecho privilegiado que alcança conteúdo de usuário e está **preso ao uid do solicitante**

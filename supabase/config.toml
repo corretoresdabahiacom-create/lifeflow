@@ -1,0 +1,55 @@
+# Configuração da pilha LOCAL do Supabase (`supabase start`), usada no desenvolvimento e nos testes de integração.
+# Produção é um projeto Supabase real: aplique as migrações com `supabase db push` (docs/DEPLOYMENT.md).
+project_id = "lifeflow"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 5000
+
+[db]
+port = 54322
+major_version = 17
+
+[db.migrations]
+enabled = true
+
+[studio]
+enabled = false
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+enable_signup = true
+# JWTs ASSIMÉTRICOS (ES256): o Worker valida pela JWKS e recusa HS256 de propósito. O arquivo é gerado por
+# `supabase gen signing-key` (scripts/test-integration.sh) e NÃO é versionado.
+signing_keys_path = "./signing_keys.json"
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+# Local/testes: cadastro sem confirmar e-mail. EM PRODUÇÃO deixe a confirmação LIGADA (painel do Supabase).
+enable_confirmations = false
+min_password_length = 8
+
+[auth.sms]
+enable_signup = true
+enable_confirmations = false
+[auth.sms.test_otp]
+
+[storage]
+enabled = false
+
+[realtime]
+enabled = false
+
+[edge_runtime]
+enabled = false
+
+[analytics]
+enabled = false

@@ -10,7 +10,7 @@ import {
 import { ZodError } from "zod";
 import type { Env } from "../env";
 import { HttpError } from "../errors";
-import type { DocData } from "../firestore";
+import type { DocData } from "../db";
 import { handleAgenda } from "../agenda";
 import { handleFinance } from "../finance";
 import { canonicalJson, pathsFor, profileTimeZone, sha256Hex, type Ctx } from "../finance/common";

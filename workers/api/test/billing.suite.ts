@@ -10,15 +10,15 @@ import {
   type WebhookRequest,
   type WebhookResult,
 } from "../src/billing/provider";
-import type { FirestoreClient } from "../src/firestore";
+import type { DbClient } from "../src/db";
 import { SystemAccessError, type SystemDb } from "../src/system";
 import { say, type ScriptedLLM, type ScriptedSTT } from "./ai.suite";
 import type { Client, Reply, World } from "./finance.suite";
 import { makeSigner, type Clock, type Signer } from "./helpers";
 
 /**
- * Suíte da Fase 5 (planos, assinaturas, webhooks, limites, painel administrativo). Mesmo código no Firestore
- * falso e no emulador real com as Security Rules reais. O provedor de pagamentos é SIMULADO (`FakePayments`);
+ * Suíte da Fase 5 (planos, assinaturas, webhooks, limites, painel administrativo). Mesmo código no Supabase
+ * falso e no Supabase real com as RLS real. O provedor de pagamentos é SIMULADO (`FakePayments`);
  * o adaptador do Mercado Pago é testado à parte, com HMAC real, em `mercadopago.test.ts` e aqui com `fetch`
  * simulado. Nada foi executado contra o Mercado Pago real.
  */
@@ -115,7 +115,7 @@ export interface BillingWorld extends World {
   /** Cliente privilegiado para conferir/semear o banco direto. */
   sys: () => Promise<SystemDb>;
   /** Cliente "dono" (ignora as regras) só para CONFERIR o que sobrou no banco; nunca usado pelo Worker. */
-  raw: FirestoreClient;
+  raw: DbClient;
 }
 export interface BillingWorldOptions {
   noEmailForA?: boolean;
@@ -144,7 +144,7 @@ export function defineBillingSuite(
     beforeAll(async () => {
       signer = await makeSigner("k1");
     });
-    // Planos, assinaturas, eventos e logs administrativos são GLOBAIS (não por usuário). No emulador real eles
+    // Planos, assinaturas, eventos e logs administrativos são GLOBAIS (não por usuário). No Supabase real eles
     // sobreviveriam entre testes e arquivos, então cada teste começa (e a suíte termina) com essas coleções vazias.
     const resetGlobal = async (w: BillingWorld) => {
       const sys = await w.sys();
@@ -224,7 +224,7 @@ export function defineBillingSuite(
 
     it("o cliente NÃO consegue forjar a própria assinatura gravando direto no banco (regras)", async () => {
       const w = await world();
-      // Pela API não existe rota para isso; o teste de regras (CI) prova que o Firestore também nega.
+      // Pela API não existe rota para isso; o teste de regras (CI) prova que o Postgres (RLS) também nega.
       expect((await w.A.put(`/v1/billing/subscription`, { planId: "premium_ai", status: "active" })).status).toBe(405);
       expect((await sub(w.A)).subscription.plan).toBe("free");
     });
@@ -562,7 +562,7 @@ export function defineBillingSuite(
 
     it("admin: indicadores (usuários, assinaturas, MRR, cancelamentos, IA, erros) e auditoria de cada acesso", async () => {
       const w = await world();
-      // O consumo de IA é agregado entre TODOS os usuários (no emulador, restos de testes anteriores): compara a diferença.
+      // O consumo de IA é agregado entre TODOS os usuários (no Supabase real, restos de testes anteriores): compara a diferença.
       const baseline = (await w.Admin.get("/v1/admin/overview")).body["ai"] as { messages: number; activeUsers: number };
       await w.A.put("/v1/profile", { displayName: "Ana", locale: "pt-BR", timezone: "America/Sao_Paulo", currency: "BRL" });
       await w.B.put("/v1/profile", { displayName: "Bia", locale: "pt-BR", timezone: "America/Sao_Paulo", currency: "BRL" });
@@ -678,13 +678,16 @@ export function defineBillingSuite(
       expect((await w.A.send("GET", "/v1/admin/overview", undefined, { "X-Admin": "true" })).status).toBe(403);
     });
 
-    it.runIf(options.fake)("a conta de serviço NUNCA é usada nas rotas normais: só o token do usuário vai ao banco", async () => {
+    it.runIf(options.fake)("a chave secreta NUNCA é usada nas rotas normais: só o JWT do usuário vai ao banco", async () => {
       const w = await world();
       w.fake!.calls.length = 0; // descarta as chamadas de preparação (limpeza global usa o caminho privilegiado)
       await w.A.get("/v1/accounts");
       await w.A.get("/v1/billing/subscription");
-      const tokens = new Set(w.fake!.calls.map((c) => c.authorization));
-      expect([...tokens].every((t) => t !== "Bearer owner")).toBe(true);
+      expect(w.fake!.calls.length).toBeGreaterThan(0);
+      for (const call of w.fake!.calls) {
+        expect(call.apikey).not.toMatch(/^sb_secret_/);
+        expect(call.authorization).toMatch(/^Bearer ey/);
+      }
     });
   });
 }

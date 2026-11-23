@@ -1,5 +1,7 @@
 # FASE 5 — SaaS (planos, limites, assinaturas, pagamentos, webhooks, painel administrativo, métricas)
 
+> **Histórico:** este documento descreve o estado em Firebase/Firestore. Em 2026-11-23 o banco e o login migraram para o Supabase (ver `DECISIONS.md` D-011).
+
 **Status:** implementada, **aguardando aprovação**. A Fase 6 não foi iniciada.
 **Ambiente de pagamento:** só um provedor **simulado** nos testes. O adaptador do Mercado Pago foi escrito a partir
 da documentação e testado com respostas simuladas e HMAC real; **nunca falou com o Mercado Pago de verdade**.

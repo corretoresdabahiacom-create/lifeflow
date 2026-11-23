@@ -1,97 +1,75 @@
 # DATABASE
 
-> Banco: Firestore (decisão D-004). Substitui PostgreSQL/Supabase do contrato original.
+> Banco: **Supabase (PostgreSQL + Supabase Auth)** — decisão D-011 (2026-11-23). Substitui o Firestore da D-004.
+> Esquema, RLS, gatilhos e funções: `supabase/migrations/*.sql` (fonte da verdade, versionada no Git).
 
-## Coleções implementadas (Fase 1)
+## Princípios
 
-| Caminho | Campos | Operações do cliente (regras) |
+- Toda tabela pessoal tem `user_id uuid not null references auth.users(id) on delete cascade`; apagar o usuário apaga tudo.
+- Colunas em `snake_case`; o Worker converte de/para `camelCase` na borda (`user_id` ↔ `uid`).
+- Dinheiro: centavos em `bigint` (domínios `lf_cents` ≥/≤ ±10^11 e `lf_pos_cents` > 0). Sem `float`.
+- Datas e horas: `text` com domínios (`lf_date` AAAA-MM-DD, `lf_time` HH:MM, `lf_ts` ISO-8601 UTC) — o mesmo formato da API.
+- `version bigint`: incrementado por gatilho a cada alteração; é o antigo `updateTime` (pré-condição de escrita otimista).
+- Ids de documento: `^[A-Za-z0-9_-]{1,80}$` (CHECK), determinísticos nas criações (idempotência, D-006).
+- **RLS ligada em todas as tabelas**, negado por padrão. O cliente nunca recebe `DELETE` onde a regra antiga o proibia.
+
+## Tabelas (26)
+
+| Grupo | Tabelas | Observações |
 |---|---|---|
-| `users/{uid}` | `uid`, `displayName`, `locale`, `timezone`, `currency`, `createdAt`, `updatedAt` | get, create, update pelo dono; list e delete negados |
-| `users/{uid}/preferences/{key}` | `uid`, `theme`, `confirmCreations`, `quietHoursStart`, `quietHoursEnd`, `updatedAt` | get, list, create, update, delete pelo dono |
+| Perfil | `profiles`, `preferences` (`app`, `ai`), `consents` (`audio`) | perfil sem DELETE; `created_at` imutável; consentimento sem DELETE |
+| Financeiro | `accounts`, `categories`, `transactions`, `transfers`, `payables`, `recurring` | nenhuma permite DELETE; lançamento/transferência só mudam por estorno (`posted→voided`) ou metadados; FK composta lançamento→conta do mesmo dono |
+| Agenda | `events`, `event_exceptions`, `tasks`, `task_categories`, `reminders`, `notifications` | eventos, exceções, tarefas e lembretes podem ser excluídos; notificações só avançam `read/dismissed` e nunca são apagadas |
+| IA | `ai_conversations`, `ai_messages`, `ai_actions`, `ai_logs`, `ai_usage`, `ai_daily` | mensagens imutáveis; ação nasce `pending`; só `status`, `result_note` e `updated_at` mudam, e só a partir de `pending`/`executing` (de `executing` apenas para `done`/`failed`/`blocked`); estados finais são imutáveis; `ai_logs` só inclusão; contadores só crescem |
+| SaaS | `plans`, `subscriptions`, `billing_payments`, `webhook_events`, `admin_logs` | o dono só LÊ assinatura/cobranças; planos legíveis por usuários logados; webhooks e logs administrativos só para `service_role` |
 
-### Fase 2 — financeiro (todas sob `users/{uid}/`)
+`overdue` (vencida) **não é gravado**: é derivado na leitura. Lançamentos têm `origin` (`manual|ai`) e `ai_action_id`.
 
-Valores em centavos inteiros. Todos os campos existem sempre (nulos quando vazios). Campos internos
-`requestHash`/`payRequestHash` (idempotência) não são devolvidos pela API. **Nenhuma coleção permite `delete`**.
+### Eventos e exceções (esparsas)
+`event_exceptions` guarda só o que a ocorrência sobrescreve. A coluna `present_fields text[]` distingue "herda da série" (ausente) de
+"sobrescrito com nulo" (presente). O Worker/`lf_get` devolvem apenas os campos presentes.
 
-| Caminho | Campos principais | Regras de escrita (resumo) |
-|---|---|---|
-| `accounts/{id}` | `name`, `type` (checking, savings, cash, credit_card, investment), `initialBalanceCents`, `balanceCents`, `archived` | criar com saldo = inicial e não arquivada; alterar nome, arquivamento e saldo (incremento); `uid`, `type`, `initialBalanceCents`, `createdAt`, `requestHash` imutáveis |
-| `categories/{id}` | `name`, `kind` (income, expense), `archived` | `kind` imutável |
-| `transactions/{id}` | `accountId`, `type` (income, expense, transfer_out, transfer_in), `amountCents` (>0), `signedCents`, `date`, `categoryId`, `description`, `notes`, `status` (posted, voided), `transferId`, `payableId`, `voidedAt` | criar só `posted`, com conta existente e sinal coerente; só 2 updates: estorno (`posted→voided`) ou metadados (`description`, `notes`, `categoryId`) |
-| `transfers/{id}` | `fromAccountId`, `toAccountId` (diferentes), `amountCents`, `date`, `description`, `status`, `outTransactionId`, `inTransactionId`, `voidedAt` | criar só `posted` com as duas contas existentes; único update: estorno |
-| `payables/{id}` | `kind` (payable, receivable), `description`, `amountCents`, `dueDate`, `accountId`, `categoryId`, `status` (open, paid, canceled), `paidDate`, `paidAmountCents`, `transactionId`, `payCount`, `recurringId` | criar `open` com `payCount` 0; `paid` exige data, valor e lançamento; não paga exige tudo vazio |
-| `recurring/{id}` | `kind`, `description`, `amountCents`, `frequency` (weekly, monthly, yearly), `startDate`, `endDate`, `accountId`, `categoryId`, `active`, `lastMaterializedThrough` | `frequency`, `startDate`, `kind` imutáveis |
+## Camada de acesso (`lf_*`)
 
-`overdue` (vencida) **não é gravado**: é derivado na leitura (`status=open` e `dueDate` < hoje no fuso do perfil).
+O Worker fala "documentos com caminho" (`users/{uid}/accounts/{id}`, `subscriptions/{uid}`, `plans/{id}`…) e as funções traduzem para as tabelas:
 
-IDs: `^[A-Za-z0-9_-]{1,80}$` (validado na API, nas regras e nas rotas, o que impede manipulação de caminho).
-IDs de criação são determinísticos (idempotência); ver `DECISIONS.md` D-006.
+| Função | Faz |
+|---|---|
+| `lf_get(path)` | devolve `{data, version}` ou `null` (id de usuário que nem é UUID → `null`) |
+| `lf_commit(ops)` | **uma transação**: `fields`, `merge`, `increments` (atômicos), `precondition` (`exists` / `updateTime`=`version`), `delete` |
+| `lf_query(parent, collection, spec)` | filtros (`EQUAL`, `>=`, `<=`), ordenação (+ desempate por id), cursor `after`, limite (≤ 5000), consulta de grupo |
+| `lf_count(collection, filters)` | contagem |
+| `lf_erase_user(uid)` | exclusão de conta (só `service_role`) |
 
-### Agenda (Fase 3)
+Todas são `SECURITY INVOKER` (a RLS vale), com `EXECUTE` só para `authenticated` e `service_role`. Erros: `PT409` pré-condição (HTTP 409),
+`PT403` gatilho negou, `42501` RLS (403), `22023`/`22xxx`/`23514` dado inválido (400). O Worker traduz 400/403/409 de regra em `403 forbidden`
+e `PT409` em `PreconditionFailedError`.
 
-Sob `users/{uid}/`: `events` (série ou evento simples), `eventExceptions` (alterações/cancelamentos de uma
-ocorrência), `tasks`, `taskCategories`, `reminders` (avulsos), `notifications`, `preferences/app` (horário silencioso).
-Documentos planos; datas locais + fuso IANA. Eventos e tarefas podem ser excluídos; categorias de tarefa não
-(arquivam); notificações só mudam `read`, `readAt`, `dismissed` e apenas para frente. Detalhes em `DECISIONS.md` D-007.
+## Ordenação e comparação
 
-### Índices
+Como no Firestore: texto comparado em colação `C` (bytes), NULL primeiro em ASC e último em DESC. Filtros de data parcial (`>= '2026-11'`)
+funcionam porque a comparação é feita como texto, sem validar o domínio.
 
-`firebase/firestore.indexes.json` continua **vazio de propósito**: todas as consultas usam apenas índices
-de campo único (`date`, `dueDate`) e filtram o resto em memória. Limite: listagens com filtro por conta,
-categoria ou tipo varrem até 2000 documentos por chamada (com cursor para continuar). Com volume maior,
-criar índices compostos (ex.: `accountId` + `date`). O emulador **não** valida índices; isso só pode ser
-confirmado em um projeto Firestore real.
+## Índices
 
-Tudo que não está listado é negado por padrão (`match /{document=**} { allow read, write: if false; }`).
+Chaves primárias `(user_id, id)` atendem a maior parte das consultas. Índices adicionais: `ai_usage(updated_at)`, `ai_logs(event, created_at)`,
+`subscriptions(provider_subscription_id)`, `subscriptions(status)`, `webhook_events(status)`. **Não foram medidos em volume real.** Com
+mais dados, criar índices compostos por `(user_id, date)` etc. via nova migração.
 
-## Coleções previstas (Parte G, a implementar nas próximas fases)
+## Migrações
 
-events, event_reminders, tasks, task_categories, ai_conversations, ai_messages,
-ai_action_logs, notifications, push_subscriptions, plans, subscriptions, payments,
-usage_records, audit_logs. As pessoais ficarão em `users/{uid}/...`; as administrativas
-(plans, audit_logs etc.) terão regras próprias, sem acesso de cliente.
+`supabase/migrations/AAAAMMDDhhmmss_nome.sql`, ordem cronológica, **só aditivas depois de publicadas** (nunca editar uma migração já aplicada
+em staging/produção). Aplicar com `supabase db push` (workflow Deploy). Testar localmente: `pnpm test` (PGlite) e `pnpm test:integration`
+(`supabase start`).
 
-## Controle de versão do "esquema"
-
-Firestore não tem migrations SQL. O versionamento é feito por:
-- `firebase/firestore.rules` e `firebase/firestore.indexes.json` (no Git, revisados em PR);
-- schemas de validação em `packages/shared` (usados pelo Worker);
-- scripts de migração de dados versionados em `firebase/migrations/` quando o formato mudar
-  (nenhum necessário na Fase 1).
+| Migração | Conteúdo |
+|---|---|
+| `…000001_schema.sql` | domínios, 26 tabelas, CHECKs, FKs, índices |
+| `…000002_security.sql` | gatilhos (versão, imutabilidade, transições, contadores), RLS, políticas, privilégios |
+| `…000003_api.sql` | funções `lf_*` e `lf_erase_user` |
 
 ## Integridade
 
-Sem constraints relacionais. A integridade é garantida por: regras (tipo, campos permitidos,
-`uid` igual ao do caminho e imutável), validação no Worker e, nas fases financeiras,
-commits atômicos do Firestore (Fase 2: `documents:commit` com pré-condições e incrementos).
-
-## Coleções do assistente (Fase 4)
-
-Todas em `users/{uid}/…`, com `uid` no documento; regras por dono.
-
-| Coleção | Conteúdo | Regras |
-|---|---|---|
-| `aiConversations/{id}` (+ `messages/{id}`) | título; mensagens `user`/`assistant` (texto) | mensagens imutáveis; conversa só avança `updatedAt`; dono pode apagar |
-| `aiActions/{id}` | ferramenta, `argsJson`, `argsHash`, resumo, valor, `reinforced`, `status`, `expiresAt` | nasce `pending`; só `status/resultNote/updatedAt` mudam, e só de `pending`/`executing`; sem exclusão |
-| `aiLogs/{id}` | evento, ferramenta, `actionId`, hash, detalhe curto | só criação (id determinístico por ação e evento); sem alteração nem exclusão |
-| `aiUsage/{AAAA-MM}` | `messages`, `voiceSeconds`, tokens | contadores só crescem; sem exclusão |
-| `aiDaily/{AAAA-MM-DD}` | `autoActions`, `autoValueCents` | idem |
-| `consents/audio` | `granted` | sem exclusão (revogar = `granted=false`) |
-| `preferences/ai` | limites de automação | validados nas regras |
-
-Lançamentos ganharam `origin` (`manual`|`ai`) e `aiActionId` (opcionais; ausentes = manual). Lembretes agora aceitam
-atualização de `title` e `remindAt`. Nenhum áudio é armazenado.
-
-## Coleções de SaaS (Fase 5)
-
-| Caminho | Quem escreve | Conteúdo |
-|---|---|---|
-| `plans/{free, pro, premium_ai}` | Admin (via backend) | Nome, preço em centavos, mensagens, minutos de voz, nível de relatório, dias de teste, ativo. Ausente → padrão do código |
-| `subscriptions/{uid}` | Backend | planId, pendingPlanId, status (pending, active, past_due, canceled), providerSubscriptionId, priceCents, currentPeriodEnd, graceUntil, cancelAtPeriodEnd, trialEndsAt, checkoutUrl, checkoutKeyHash, datas. O dono só **lê** |
-| `users/{uid}/billingPayments/{id}` | Backend (webhook) | Cobranças (id determinístico do provedor). O dono só **lê** |
-| `webhookEvents/{hash}` | Backend | Deduplicação e situação (received, processed, ignored, failed). Nenhum cliente acessa |
-| `adminLogs/{uuid}` | Backend | Auditoria administrativa só de inclusão. Nenhum cliente acessa |
-
-Índices de grupo de coleção declarados em `firebase/firestore.indexes.json` (`aiUsage.updatedAt`, `aiLogs.event`,
-`aiLogs.createdAt`); **não validados em projeto real**.
+Garantida pelo próprio banco: tipos, domínios, CHECKs, FKs (inclusive compostas), gatilhos e RLS — além da validação no Worker.
+Continua valendo o limite conhecido (D-006): o cliente, com o próprio JWT, pode escrever nos próprios dados fora do Worker dentro do que a
+RLS/gatilhos permitem; o saldo é conferido por `/v1/reconcile`.

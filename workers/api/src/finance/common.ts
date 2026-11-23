@@ -3,11 +3,11 @@ import { HttpError } from "../errors";
 import {
   PreconditionFailedError,
   type DocData,
-  type FirestoreClient,
+  type DbClient,
   type QuerySpec,
   type StoredDoc,
   type WriteOp,
-} from "../firestore";
+} from "../db";
 import { json } from "../http";
 
 export interface Ctx {
@@ -15,7 +15,7 @@ export interface Ctx {
   url: URL;
   /** Vem SOMENTE do token validado. Todo caminho do banco é derivado dele. */
   uid: string;
-  db: FirestoreClient;
+  db: DbClient;
   now: () => Date;
   /** Preenchido só pelo executor da IA (nunca pelo cliente): marca a origem dos lançamentos criados. */
   origin?: "ai";
@@ -193,7 +193,7 @@ const sortValue = (value: DocData[string] | undefined): string | number | null =
 
 /** Lê todas as páginas de uma consulta até `maxDocs`; informa se o limite cortou resultados. */
 export async function readAll(
-  db: FirestoreClient,
+  db: DbClient,
   parent: string,
   spec: Omit<QuerySpec, "limit" | "after">,
   maxDocs = 5000,
@@ -221,7 +221,7 @@ const MAX_SCAN = 2000;
  * Varre no máximo `MAX_SCAN` documentos por chamada; o cursor permite continuar.
  */
 export async function scanPage(
-  db: FirestoreClient,
+  db: DbClient,
   parent: string,
   spec: Omit<QuerySpec, "limit" | "after"> & { orderBy: NonNullable<QuerySpec["orderBy"]> },
   match: (data: DocData) => boolean,

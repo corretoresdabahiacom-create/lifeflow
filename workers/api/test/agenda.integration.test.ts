@@ -1,21 +1,13 @@
 import { defineAgendaSuite, type AgendaWorld } from "./agenda.suite";
-import { Client, tokensFor } from "./finance.suite";
+import { Client } from "./finance.suite";
 import { makeApp, type Clock, type Signer } from "./helpers";
+import { createStackUser, stackEnv } from "./stack";
 
-/**
- * Mesma suíte da agenda contra o EMULADOR REAL do Firestore, com as Security Rules reais.
- * Execução: `pnpm test:integration` (sobe o emulador).
- */
-const host = process.env["FIRESTORE_EMULATOR_HOST"];
-if (!host) {
-  throw new Error("FIRESTORE_EMULATOR_HOST ausente: rode `pnpm test:integration` (ele inicia o emulador).");
-}
-
-async function emulatorWorld(signer: Signer): Promise<AgendaWorld> {
+async function stackWorld(_signer: Signer): Promise<AgendaWorld> {
   const clock: Clock = { now: new Date("2026-11-09T12:00:00.000Z") };
-  const app = makeApp(signer, fetch, { FIRESTORE_BASE_URL: `http://${host}` }, clock);
-  const { a, b } = await tokensFor(signer);
-  return { clock, A: new Client(app, a), B: new Client(app, b) };
+  const app = makeApp(null, fetch, stackEnv, clock);
+  const [a, b] = await Promise.all([createStackUser("userA"), createStackUser("userB")]);
+  return { clock, A: new Client(app, a.token), B: new Client(app, b.token) };
 }
 
-defineAgendaSuite("agenda (emulador real do Firestore + Security Rules)", emulatorWorld, { fake: false });
+defineAgendaSuite("agenda (Supabase real: GoTrue + PostgREST + RLS)", stackWorld, { fake: false });

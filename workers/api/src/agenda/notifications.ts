@@ -7,7 +7,7 @@ import {
   type AppNotification,
   type NotificationType,
 } from "@lifeflow/shared";
-import { PreconditionFailedError, type DocData, type WriteOp } from "../firestore";
+import { PreconditionFailedError, type DocData, type WriteOp } from "../db";
 import { allow, json, parseBody } from "../http";
 import {
   assertId,

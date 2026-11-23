@@ -1,22 +1,22 @@
 # ARCHITECTURE
 
-> Estado (Fase 2): fundação e módulo financeiro implementados. Ver `PHASE_01_FOUNDATION.md` para evidências.
+> Estado: migrado para Supabase na D-011 (2026-11-23). Fase 2: fundação e módulo financeiro implementados. Ver `PHASE_01_FOUNDATION.md` para evidências.
 
 ## Visão geral
 
-Frontend React/Vite (PWA) em Cloudflare Pages → Cloudflare Worker (API) → Firestore.
-Autenticação com Firebase Auth. Contrato em `MASTER_PROMPT.md`, adaptado por `DECISIONS.md` D-004.
+Frontend React/Vite (PWA) em Cloudflare Pages → Cloudflare Worker (API) → Supabase (PostgreSQL via PostgREST).
+Autenticação com Supabase Auth. Contrato em `MASTER_PROMPT.md`; decisão atual em `DECISIONS.md` D-011 (substitui D-004).
 
-## Fluxo de autenticação (contrato A2, adaptado para Firebase)
+## Fluxo de autenticação (contrato A2, Supabase)
 
-1. O usuário autentica pelo Firebase Auth; o SDK no frontend mantém e renova a sessão.
-2. O frontend envia o ID token ao Worker em `Authorization: Bearer <token>`.
-3. O Worker valida o JWT: assinatura RS256 (JWKS do Google), `iss` =
-   `https://securetoken.google.com/<projectId>`, `aud` = `<projectId>`, `exp`, `sub` não vazio.
-4. O Worker chama a API REST do Firestore **por requisição**, repassando o mesmo token do
-   usuário. O Firestore aplica as Security Rules.
-5. As regras identificam o usuário por `request.auth.uid`.
-6. O Worker nunca usa conta de serviço em requisições de usuário, não guarda refresh token e
+1. O usuário autentica pelo Supabase Auth; o `@supabase/supabase-js` no frontend mantém e renova a sessão (usado só para login).
+2. O frontend envia o JWT de acesso ao Worker em `Authorization: Bearer <token>`.
+3. O Worker valida o JWT: assinatura assimétrica (ES256/RS256, JWKS do projeto; HS256 é recusado), `iss` =
+   `<SUPABASE_URL>/auth/v1`, `aud` = `authenticated`, `role` = `authenticated`, `exp`, `sub` UUID.
+4. O Worker chama funções `lf_*` (RPC do PostgREST) **por requisição**, repassando o mesmo JWT do
+   usuário. O Postgres aplica a RLS e os gatilhos.
+5. As políticas identificam o usuário por `auth.uid()`; cada tabela tem `user_id`.
+6. O Worker só usa a chave secreta (`service_role`) para a lista fechada de `SystemDb` (webhooks, planos, logs de admin) e `lf_erase_user`; nunca em requisições de dados do usuário, não guarda refresh token e
    nunca aceita `uid` do cliente como identidade: o `uid` vem somente do token validado.
 7. Token expirado: o Worker responde `401` com `WWW-Authenticate: Bearer error="invalid_token"`
    e o SDK do frontend renova a sessão.
@@ -41,20 +41,20 @@ Todas as coleções pessoais ficam sob `users/{uid}`; a regra de propriedade é 
 | Componente | Caminho | Papel |
 |---|---|---|
 | Frontend | `apps/web` | UI, autenticação via SDK, PWA |
-| Worker | `workers/api` | Validação de JWT, validação de entrada, acesso ao Firestore |
+| Worker | `workers/api` | Validação de JWT, validação de entrada, acesso ao banco (RPC `lf_*`) |
 | Shared | `packages/shared` | Schemas de validação e tipos |
-| Regras | `firebase/` | `firestore.rules`, índices, testes de regras |
+| Banco | `supabase/` | Migrações (esquema, RLS, gatilhos, funções), `config.toml`, testes do banco |
 
 ## Status das integrações (contrato A4)
 
 | Integração | Status |
 |---|---|
-| Firebase Auth (frontend) | Código implementado; sem projeto real configurado |
-| Validação de JWT Firebase no Worker | Código implementado e testado com mocks (chaves geradas nos testes) |
-| Firestore REST via Worker | Código implementado e testado com mocks |
-| Firestore Security Rules | Escritas; 113 testes de regras aprovados no emulador do Firestore (CI): 19 da Fase 1 + 51 financeiros + 43 da agenda |
-| Módulo financeiro (Worker + Firestore) | Implementado; 31 testes de API aprovados contra o emulador real com as regras reais (CI) |
-| Módulo de agenda (Worker + Firestore) | Implementado; 44 testes de API no emulador real com as regras reais (CI); 43 de regras |
+| Supabase Auth (frontend) | Código implementado; sem projeto real configurado |
+| Validação de JWT do Supabase no Worker | Código implementado e testado com mocks (chaves geradas nos testes) |
+| Banco via PostgREST (Worker) | Testado contra Postgres real (PGlite) com PostgREST emulado; contra o PostgREST/GoTrue reais **não executado** (só na CI, ainda sem rodar) |
+| RLS, gatilhos e funções `lf_*` | Migrações escritas; 44 testes (RLS, API) aprovados em Postgres local (PGlite) |
+| Módulo financeiro (Worker + banco) | Implementado; suíte de API aprovada no Postgres local (PGlite); Supabase real: não executado |
+| Módulo de agenda (Worker + banco) | Implementado; suíte de API aprovada no Postgres local (PGlite); Supabase real: não executado |
 | Notificações da agenda | Geradas sob demanda pelo app aberto; sem agendador |
 | DeepSeek (LLM) | Não implementado |
 | Groq (transcrição) | Não implementado |
@@ -70,7 +70,7 @@ Navegador ── POST /v1/ai/chat ──► Worker ── LLMProvider (DeepSeek)
                                     │            │
                                     │            └─► ferramenta de leitura → dados (não confiáveis) → modelo
                                     │            └─► ferramenta de escrita → aiActions (pendente, congelada)
-Navegador ── POST …/actions/{id}/confirm ─► Worker ─► rota interna (mesmas validações) ─► Firestore
+Navegador ── POST …/actions/{id}/confirm ─► Worker ─► rota interna (mesmas validações) ─► Supabase
 Navegador ── POST /v1/ai/transcribe (áudio) ─► Worker ─► SpeechToTextProvider (Groq) ─► texto (áudio descartado)
 ```
 

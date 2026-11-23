@@ -1,14 +1,14 @@
 import { defineBillingSuite, FakePayments, type BillingWorld, type BillingWorldOptions } from "./billing.suite";
 import { ScriptedLLM, ScriptedSTT } from "./ai.suite";
 import { Client } from "./finance.suite";
-import { env, fakeFirestore, makeApp, signToken, uidOfToken, type Clock, type Signer } from "./helpers";
+import { env, fakeSupabase, makeApp, signToken, uidOfToken, type Clock, type Signer } from "./helpers";
 import { createSystemDb } from "../src/system";
-import { FirestoreClient } from "../src/firestore";
+import { DbClient } from "../src/db";
 import { defineAccountSuite } from "./account.suite";
 import { defineSecuritySuite } from "./security.suite";
 
 async function fakeWorld(signer: Signer, options: BillingWorldOptions): Promise<BillingWorld> {
-  const fake = fakeFirestore();
+  const fake = await fakeSupabase();
   const fetchImpl = ((input: RequestInfo | URL, init?: RequestInit) => fake.fetchImpl(input, init)) as typeof fetch;
   const clock: Clock = { now: new Date("2026-11-09T12:00:00.000Z") };
   const llm = new ScriptedLLM();
@@ -32,13 +32,13 @@ async function fakeWorld(signer: Signer, options: BillingWorldOptions): Promise<
     uidA: uidOfToken(a),
     uidB: uidOfToken(b),
     app,
-    raw: new FirestoreClient({ ...env, ...envOverride }, { idToken: "owner", fetchImpl }),
+    raw: new DbClient({ ...env, ...envOverride }, { accessToken: "", apiKey: env.SUPABASE_SECRET_KEY ?? "", privileged: true, fetchImpl }),
     sys: () => createSystemDb({ ...env, ...envOverride }, fetchImpl),
   };
 }
 
-defineBillingSuite("assinaturas, limites e painel admin (Firestore falso em memória)", fakeWorld, { fake: true });
+defineBillingSuite("assinaturas, limites e painel admin (Supabase local (Postgres real em PGlite))", fakeWorld, { fake: true });
 
-defineAccountSuite("exportação e exclusão de conta (Firestore falso em memória)", fakeWorld, { rawClient: (w) => w.raw });
+defineAccountSuite("exportação e exclusão de conta (Supabase local (Postgres real em PGlite))", fakeWorld, { rawClient: (w) => w.raw, fake: true });
 
-defineSecuritySuite("segurança e isolamento entre usuários (Firestore falso em memória)", fakeWorld);
+defineSecuritySuite("segurança e isolamento entre usuários (Supabase local (Postgres real em PGlite))", fakeWorld);

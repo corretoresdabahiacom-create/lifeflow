@@ -3,16 +3,20 @@ import type { PaymentProvider } from "../src/billing/provider";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import type { KeyLike, JWK } from "jose";
 import { createHandler } from "../src/app";
-import { decodeFields, encodeFields, type DocData } from "../src/firestore";
+import { createHash } from "node:crypto";
+import type { PGlite } from "@electric-sql/pglite";
+import { createAuthUser, createDatabase, decodeJwtPayload, postgrestFetch, resetDatabase } from "@lifeflow/db";
 import type { Env } from "../src/env";
 
-export const PROJECT_ID = "demo-lifeflow";
+export const SUPABASE_URL = "https://lifeflow-test.supabase.co";
+export const ISSUER = `${SUPABASE_URL}/auth/v1`;
 export const ORIGIN = "https://app.lifeflow.test";
 
 export const env: Env = {
-  FIREBASE_PROJECT_ID: PROJECT_ID,
+  SUPABASE_URL,
+  SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+  SUPABASE_SECRET_KEY: "sb_secret_test",
   ALLOWED_ORIGIN: ORIGIN,
-  FIRESTORE_BASE_URL: "https://firestore.test",
 };
 
 export interface Signer {
@@ -37,298 +41,160 @@ export interface TokenOptions {
   expiresAt?: number;
   issuedAt?: number;
   kid?: string;
-  /** Claim `admin: true` (só o administrador do projeto Firebase consegue defini-la). */
+  /** `app_metadata.admin = true` (só quem administra o projeto Supabase consegue defini-la). */
   admin?: boolean;
-  /** Momento do último login (epoch, s). Padrão: agora - 10 s. */
+  /** Momento do último login (epoch, s), gravado em `amr[].timestamp`. Padrão: agora - 10 s. */
   authTime?: number;
 }
 
 export async function signToken(signer: Signer, options: TokenOptions = {}): Promise<string> {
   const nowSec = Math.floor(Date.now() / 1000);
-  const jwt = new SignJWT({ email: options.email ?? "user@example.com", auth_time: options.authTime ?? nowSec - 10, ...(options.admin ? { admin: true } : {}) })
+  const jwt = new SignJWT({
+    email: options.email ?? "user@example.com",
+    role: "authenticated",
+    amr: [{ method: "password", timestamp: options.authTime ?? nowSec - 10 }],
+    app_metadata: { provider: "email", ...(options.admin ? { admin: true } : {}) },
+  })
     .setProtectedHeader({ alg: "RS256", kid: options.kid ?? "k1" })
-    .setIssuer(options.issuer ?? `https://securetoken.google.com/${PROJECT_ID}`)
-    .setAudience(options.audience ?? PROJECT_ID)
+    .setIssuer(options.issuer ?? ISSUER)
+    .setAudience(options.audience ?? "authenticated")
     .setIssuedAt(options.issuedAt ?? nowSec - 10)
     .setExpirationTime(options.expiresAt ?? nowSec + 3600);
-  if (options.uid !== undefined) jwt.setSubject(options.uid);
+  if (options.uid !== undefined) jwt.setSubject(uuidFor(options.uid));
   return jwt.sign(signer.privateKey);
 }
 
 export interface RecordedCall {
   method: string;
   url: string;
+  /** Cabeçalho `Authorization` (JWT do usuário). Ausente nas chamadas privilegiadas. */
   authorization: string | null;
+  /** Cabeçalho `apikey`: chave publicável (rotas normais) ou secreta (caminho privilegiado restrito). */
+  apikey: string | null;
   body: string | null;
 }
 
-type RestFields = Parameters<typeof decodeFields>[0];
+let sharedDatabase: Promise<PGlite> | undefined;
 
-interface RestValueIn {
-  stringValue?: string;
-  integerValue?: string;
-  doubleValue?: number;
-  booleanValue?: boolean;
-  nullValue?: null;
-  referenceValue?: string;
+/** Um PostgreSQL por arquivo de teste (criar com as migrações custa ~1 s); os dados são zerados a cada mundo. */
+function database(): Promise<PGlite> {
+  sharedDatabase ??= createDatabase();
+  return sharedDatabase;
 }
 
-const decodeValue = (v: RestValueIn): string | number | boolean | null => {
-  if (v.stringValue !== undefined) return v.stringValue;
-  if (v.integerValue !== undefined) return Number(v.integerValue);
-  if (v.doubleValue !== undefined) return v.doubleValue;
-  if (v.booleanValue !== undefined) return v.booleanValue;
-  if (v.referenceValue !== undefined) return v.referenceValue.split("/").pop() ?? "";
-  return null;
-};
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-interface FakeRow {
-  id: string;
-  data: DocData;
+/** Ids de usuário do Supabase são UUIDs. Rótulos legíveis dos testes (`userA`) viram UUIDs determinísticos. */
+export function uuidFor(label: string): string {
+  if (UUID.test(label)) return label.toLowerCase();
+  const h = createHash("sha1").update(label).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 
 /**
- * Firestore falso em memória. Registra todas as chamadas para que os testes inspecionem o que o
- * Worker enviou. Implementa o que o Worker usa: GET/PATCH/DELETE de documento, `:commit` atômico
- * (pré-condições exists/updateTime e incremento) e `:runQuery` (filtros, ordem, cursor, limite).
- * NÃO aplica Security Rules nem índices: isso é provado no emulador (CI).
+ * Supabase falso para os testes: PostgreSQL REAL (PGlite) com as MESMAS migrações de `supabase/migrations`
+ * (esquema, gatilhos, RLS e funções `lf_*`) atrás de um PostgREST emulado. Registra todas as chamadas para os
+ * testes inspecionarem o que o Worker enviou. A RLS e os gatilhos valem de verdade; o que não é coberto é a
+ * verificação do JWT pelo PostgREST e o GoTrue (isso fica na suíte de integração, com `supabase start`).
  */
-export function fakeFirestore(initial: Record<string, DocData> = {}) {
-  const docs = new Map<string, DocData>(Object.entries(initial));
-  const times = new Map<string, string>();
+export async function fakeSupabase() {
+  const db = await database();
+  await resetDatabase(db);
   const calls: RecordedCall[] = [];
+  const known = new Set<string>();
   let failures: Array<number | "network"> = [];
   let commitFailures: Array<number | "network"> = [];
-  let tick = 0;
-  const touch = (path: string): void => {
-    times.set(path, new Date(1_800_000_000_000 + ++tick * 1000).toISOString());
-  };
-  for (const key of docs.keys()) touch(key);
+  const inner = postgrestFetch(db);
 
-  const marker = "/documents/";
-  const pathAfterDocuments = (url: URL): string =>
-    decodeURIComponent(url.pathname.slice(url.pathname.indexOf(marker) + marker.length));
-  const nameToPath = (name: string): string => name.slice(name.indexOf(marker) + marker.length);
-  const errorResponse = (status: number, code: string): Response =>
-    new Response(JSON.stringify({ error: { code: status, status: code, message: code } }), { status });
-
-  const commit = (body: string): Response => {
-    type Write = {
-      update?: { name: string; fields?: RestFields };
-      delete?: string;
-      updateMask?: { fieldPaths: string[] };
-      updateTransforms?: Array<{ fieldPath: string; increment: { integerValue: string } }>;
-      currentDocument?: { exists?: boolean; updateTime?: string };
-    };
-    const { writes } = JSON.parse(body) as { writes: Write[] };
-    // 1) Todas as pré-condições antes de gravar qualquer coisa (atomicidade).
-    for (const write of writes) {
-      const path = nameToPath((write.update?.name ?? write.delete) as string);
-      const current = docs.get(path);
-      const condition = write.currentDocument;
-      if (!condition) continue;
-      if (condition.exists === false && current) return errorResponse(409, "ALREADY_EXISTS");
-      if (condition.exists === true && !current) return errorResponse(404, "NOT_FOUND");
-      if (condition.updateTime !== undefined && (!current || times.get(path) !== condition.updateTime)) {
-        return errorResponse(400, "FAILED_PRECONDITION");
-      }
-    }
-    // 2) Aplica tudo.
-    for (const write of writes) {
-      if (write.delete !== undefined) {
-        const gone = nameToPath(write.delete);
-        docs.delete(gone);
-        times.delete(gone);
-        continue;
-      }
-      const update = write.update as NonNullable<Write["update"]>;
-      const path = nameToPath(update.name);
-      const fields = decodeFields(update.fields);
-      const mask = write.updateMask?.fieldPaths;
-      const next: DocData = mask ? { ...(docs.get(path) ?? {}) } : {};
-      if (mask) for (const field of mask) next[field] = fields[field] ?? null;
-      else Object.assign(next, fields);
-      for (const transform of write.updateTransforms ?? []) {
-        next[transform.fieldPath] = Number(next[transform.fieldPath] ?? 0) + Number(transform.increment.integerValue);
-      }
-      docs.set(path, next);
-      touch(path);
-    }
-    return new Response(JSON.stringify({ writeResults: writes.map(() => ({})) }), { status: 200 });
+  /** No Supabase real quem cria o usuário é o GoTrue no cadastro; aqui ele passa a existir no primeiro uso. */
+  const ensureUser = async (uid: string): Promise<void> => {
+    if (known.has(uid)) return;
+    known.add(uid);
+    await createAuthUser(db, uid);
   };
 
-  const runQuery = (parent: string, body: string): Response => {
-    type Filter = { fieldFilter: { field: { fieldPath: string }; op: string; value: RestValueIn } };
-    type Order = { field: { fieldPath: string }; direction?: string };
-    const { structuredQuery: sq } = JSON.parse(body) as {
-      structuredQuery: {
-        from: Array<{ collectionId: string; allDescendants?: boolean }>;
-        where?: Filter | { compositeFilter: { filters: Filter[] } };
-        orderBy?: Order[];
-        limit?: number;
-        startAt?: { values: RestValueIn[]; before?: boolean };
-      };
-    };
-    const collectionId = sq.from[0]?.collectionId ?? "";
-    const group = sq.from[0]?.allDescendants === true;
-    const prefix = parent === "" ? `${collectionId}/` : `${parent}/${collectionId}/`;
-    // Em consulta de grupo o "id" vira o caminho completo para o resultado reconstruir o nome do documento.
-    let rows: FakeRow[] = [...docs.entries()]
-      .filter(([path]) => {
-        if (group) {
-          const parts = path.split("/");
-          return parts.length % 2 === 0 && parts[parts.length - 2] === collectionId;
-        }
-        return path.startsWith(prefix) && !path.slice(prefix.length).includes("/");
-      })
-      .map(([path, data]) => ({ id: group ? path : path.slice(prefix.length), data }));
-
-    const filters: Filter[] = !sq.where ? [] : "compositeFilter" in sq.where ? sq.where.compositeFilter.filters : [sq.where];
-    // Regra do Firestore real (e do emulador): com filtro de desigualdade, a primeira ordenação é pelo mesmo campo.
-    const inequality = filters.find((f) => f.fieldFilter.op !== "EQUAL")?.fieldFilter.field.fieldPath;
-    if (inequality && (sq.orderBy?.[0]?.field.fieldPath ?? "__name__") !== inequality) {
-      return new Response(JSON.stringify({ error: { code: 400, status: "INVALID_ARGUMENT", message: "inequality filter property and first sort order must be the same" } }), { status: 400 });
-    }
-    for (const { fieldFilter } of filters) {
-      const field = fieldFilter.field.fieldPath;
-      const wanted = decodeValue(fieldFilter.value);
-      rows = rows.filter((row) => {
-        const value = row.data[field];
-        if (value === undefined || value === null || wanted === null) return false;
-        if (fieldFilter.op === "EQUAL") return value === wanted;
-        if (fieldFilter.op === "GREATER_THAN_OR_EQUAL") return value >= wanted;
-        if (fieldFilter.op === "LESS_THAN_OR_EQUAL") return value <= wanted;
-        throw new Error(`Operador não suportado no fake: ${fieldFilter.op}`);
-      });
-    }
-
-    const orders: Order[] = sq.orderBy ?? [{ field: { fieldPath: "__name__" } }];
-    const compare = (a: FakeRow, b: FakeRow): number => {
-      for (const order of orders) {
-        const field = order.field.fieldPath;
-        const av = field === "__name__" ? a.id : (a.data[field] ?? null);
-        const bv = field === "__name__" ? b.id : (b.data[field] ?? null);
-        if (av === bv) continue;
-        const sign = av === null ? -1 : bv === null ? 1 : av < bv ? -1 : 1;
-        return order.direction === "DESCENDING" ? -sign : sign;
-      }
-      return 0;
-    };
-    rows.sort(compare);
-
-    if (sq.startAt) {
-      const cursor: FakeRow = { id: "", data: {} };
-      orders.forEach((order, index) => {
-        const value = decodeValue(sq.startAt?.values[index] ?? { nullValue: null });
-        if (order.field.fieldPath === "__name__") cursor.id = String(value);
-        else cursor.data[order.field.fieldPath] = value;
-      });
-      rows = rows.filter((row) => (sq.startAt?.before ? compare(row, cursor) >= 0 : compare(row, cursor) > 0));
-    }
-    if (sq.limit !== undefined) rows = rows.slice(0, sq.limit);
-
-    const readTime = "2026-01-01T00:00:00Z";
-    const result =
-      rows.length === 0
-        ? [{ readTime }]
-        : rows.map((row) => {
-            const path = group ? row.id : `${prefix}${row.id}`;
-            return {
-              document: {
-                name: `projects/${PROJECT_ID}/databases/(default)/documents/${path}`,
-                fields: encodeFields(row.data),
-                updateTime: times.get(path),
-              },
-              readTime,
-            };
-          });
-    return new Response(JSON.stringify(result), { status: 200 });
-  };
-
-  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
-    const headers = new Headers(init?.headers);
-    const body = typeof init?.body === "string" ? init.body : null;
-    const method = init?.method ?? "GET";
-    calls.push({ method, url: url.toString(), authorization: headers.get("Authorization"), body });
-
-    const next = failures.shift();
-    if (next === "network") throw new TypeError("network error");
-    if (typeof next === "number") return new Response("{}", { status: next });
-
-    if (method === "POST" && url.pathname.endsWith(":commit")) {
-      const failure = commitFailures.shift();
-      if (failure === "network") throw new TypeError("network error");
-      if (typeof failure === "number") return new Response("{}", { status: failure });
-      return commit(body ?? "{}");
-    }
-    if (method === "POST" && url.pathname.endsWith(":listCollectionIds")) {
-      const parent = pathAfterDocuments(url).replace(/:listCollectionIds$/, "");
-      const ids = new Set<string>();
-      for (const path of docs.keys()) {
-        if (!path.startsWith(`${parent}/`)) continue;
-        const rest = path.slice(parent.length + 1).split("/");
-        if (rest.length >= 2) ids.add(rest[0] as string);
-      }
-      return new Response(JSON.stringify(ids.size ? { collectionIds: [...ids].sort() } : {}), { status: 200 });
-    }
-    if (method === "POST" && url.pathname.endsWith("/documents:runQuery")) return runQuery("", body ?? "{}");
-    if (method === "POST" && url.pathname.endsWith(":runQuery")) {
-      return runQuery(pathAfterDocuments(url).replace(/:runQuery$/, ""), body ?? "{}");
-    }
-    if (method === "POST" && url.pathname.endsWith("/documents:runAggregationQuery")) {
-      const parsed = JSON.parse(body ?? "{}") as { structuredAggregationQuery: { structuredQuery: Record<string, unknown> } };
-      const query = { ...parsed.structuredAggregationQuery.structuredQuery };
-      delete query["limit"];
-      const result = JSON.parse(await runQuery("", JSON.stringify({ structuredQuery: query })).text()) as Array<{ document?: unknown }>;
-      const n = result.filter((r) => r.document).length;
-      return new Response(JSON.stringify([{ result: { aggregateFields: { n: { integerValue: String(n) } } } }]), { status: 200 });
-    }
-
-    const path = pathAfterDocuments(url);
-    if (method === "GET") {
-      const doc = docs.get(path);
-      if (!doc) return new Response("{}", { status: 404 });
-      return new Response(
-        JSON.stringify({ name: path, fields: encodeFields(doc), updateTime: times.get(path) }),
-        { status: 200 },
-      );
-    }
-    if (method === "PATCH") {
-      const parsed = JSON.parse(body ?? "{}") as { fields?: RestFields };
-      docs.set(path, { ...(docs.get(path) ?? {}), ...decodeFields(parsed.fields) });
-      touch(path);
-      return new Response("{}", { status: 200 });
-    }
-    if (method === "DELETE") {
-      docs.delete(path);
-      times.delete(path);
-      return new Response("{}", { status: 200 });
-    }
-    return new Response("{}", { status: 405 });
-  }) as typeof fetch;
-
-  return {
-    docs,
+  const self = {
+    db,
     calls,
-    fetchImpl,
+    ensureUser,
+    fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      const headers = new Headers(init?.headers);
+      const body = typeof init?.body === "string" ? init.body : null;
+      calls.push({
+        method: init?.method ?? "GET",
+        url: url.toString(),
+        authorization: headers.get("Authorization"),
+        apikey: headers.get("apikey"),
+        body,
+      });
+
+      const next = failures.shift();
+      if (next === "network") throw new TypeError("network error");
+      if (typeof next === "number") return new Response("{}", { status: next });
+      if (url.pathname.endsWith("/rpc/lf_commit")) {
+        const failure = commitFailures.shift();
+        if (failure === "network") throw new TypeError("network error");
+        if (typeof failure === "number") return new Response("{}", { status: failure });
+      }
+
+      // Usuários citados em caminhos de escrita (`users/{uid}`, `subscriptions/{uid}`) existem no GoTrue.
+      const bearer = /^Bearer\s+(.+)$/.exec(headers.get("Authorization") ?? "")?.[1];
+      if (bearer) {
+        try {
+          const sub = decodeJwtPayload(bearer).sub;
+          if (typeof sub === "string" && UUID.test(sub)) await ensureUser(sub);
+        } catch {
+          /* token malformado: o PostgREST emulado responde 401 */
+        }
+      }
+      if (body && (headers.get("apikey") ?? "").startsWith("sb_secret_") && url.pathname.endsWith("/rpc/lf_commit")) {
+        for (const m of body.matchAll(/"path":"(?:users|subscriptions)\/([0-9a-f-]{36})/g)) await ensureUser(m[1] as string);
+      }
+
+      const response = await inner(input, init);
+      if (url.pathname.endsWith("/rpc/lf_erase_user") && body) {
+        const uid = (JSON.parse(body) as { p_uid?: string }).p_uid;
+        if (uid) known.delete(uid);
+      }
+      return response;
+    }) as typeof fetch,
+    /** Os próximos pedidos (de qualquer tipo) falham com este status (ou erro de rede). */
     failNext(...statuses: Array<number | "network">) {
       failures = statuses;
     },
-    /** Faz o(s) próximo(s) `commit` falharem (os demais pedidos seguem normais). */
+    /** Faz o(s) próximo(s) `lf_commit` falharem (os demais pedidos seguem normais). */
     failCommit(...statuses: Array<number | "network">) {
       commitFailures = statuses;
     },
+    /** SQL direto como superusuário (ignora a RLS): só para preparar ou inspecionar o estado nos testes. */
+    async sql<T = Record<string, unknown>>(text: string, params: unknown[] = []): Promise<T[]> {
+      return (await db.query<T>(text, params)).rows;
+    },
+    /** Todas as linhas de todas as tabelas públicas, como objetos JSON. */
+    async allRows(): Promise<Array<{ table: string; row: Record<string, unknown> }>> {
+      const tables = await db.query<{ tablename: string }>("select tablename from pg_tables where schemaname = 'public'");
+      const out: Array<{ table: string; row: Record<string, unknown> }> = [];
+      for (const { tablename } of tables.rows) {
+        const rows = await db.query<{ r: Record<string, unknown> }>(`select to_jsonb(t) as r from public."${tablename}" t`);
+        for (const { r } of rows.rows) out.push({ table: tablename, row: r });
+      }
+      return out;
+    },
   };
+  return self;
 }
+
+export type FakeSupabase = Awaited<ReturnType<typeof fakeSupabase>>;
 
 /** Relógio ajustável dos testes: `clock.now` pode ser alterado entre as requisições. */
 export interface Clock {
   now: Date;
 }
 
+/** `signer = null` usa o resolvedor REAL de chaves (JWKS do Supabase), para a suíte de integração. */
 export function makeApp(
-  signer: Signer,
+  signer: Signer | null,
   fetchImpl: typeof fetch,
   envOverride: Partial<Env> = {},
   clock?: Clock,
@@ -339,7 +205,7 @@ export function makeApp(
     ...(providers.llm ? { llm: providers.llm } : {}),
     ...(providers.stt ? { stt: providers.stt } : {}),
     ...(providers.payments ? { payments: providers.payments } : {}),
-    keyResolver: () => createLocalJWKSet({ keys: [signer.jwk] }),
+    ...(signer ? { keyResolver: () => createLocalJWKSet({ keys: [signer.jwk] }) } : {}),
     now: () => clock?.now ?? new Date("2026-11-09T12:00:00.000Z"),
   });
   return (path: string, init: RequestInit = {}, token?: string): Promise<Response> => {
@@ -371,7 +237,7 @@ export const putJson = (body: unknown): RequestInit => ({
 
 /**
  * Concede um plano a um usuário gravando `subscriptions/{uid}` pelo MESMO caminho privilegiado do Worker
- * (no emulador o token "owner" ignora as regras; no Firestore falso não há regras). Só para preparar testes.
+ * (a chave secreta equivale ao papel `service_role`, que ignora a RLS). Só para preparar testes.
  */
 export async function grantPlan(
   fetchImpl: typeof fetch,
@@ -379,10 +245,11 @@ export async function grantPlan(
   uid: string,
   plan: "free" | "pro" | "premium_ai",
   over: Record<string, string | number | boolean | null> = {},
+  secretKey: string | undefined = env.SUPABASE_SECRET_KEY,
 ): Promise<void> {
   if (plan === "free") return;
   const { createSystemDb } = await import("../src/system");
-  const sys = await createSystemDb({ FIREBASE_PROJECT_ID: PROJECT_ID, ALLOWED_ORIGIN: ORIGIN, FIRESTORE_BASE_URL: baseUrl }, fetchImpl);
+  const sys = await createSystemDb({ ...env, SUPABASE_URL: baseUrl, ...(secretKey ? { SUPABASE_SECRET_KEY: secretKey } : {}) }, fetchImpl);
   await sys.commit([
     {
       path: `subscriptions/${uid}`,

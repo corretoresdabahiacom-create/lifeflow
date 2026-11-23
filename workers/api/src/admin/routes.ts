@@ -1,7 +1,7 @@
 import { PLAN_IDS, PlanConfigInputSchema, type PlanId } from "@lifeflow/shared";
 import type { Env } from "../env";
 import { HttpError } from "../errors";
-import type { DocData } from "../firestore";
+import type { DocData } from "../db";
 import { allow, json, parseBody } from "../http";
 import { loadPlans, mergePlan, paymentView, subscriptionPath } from "../billing/store";
 import type { SystemDb } from "../system";
@@ -126,7 +126,7 @@ export async function handleAdmin(ctx: AdminCtx): Promise<Response> {
           { name: "LLM (DeepSeek)", configured: Boolean(e.DEEPSEEK_API_KEY), model: e.LLM_MODEL ?? "deepseek-flash" },
           { name: "Transcrição (Groq)", configured: Boolean(e.GROQ_API_KEY), model: e.STT_MODEL ?? "whisper-large-v3-turbo" },
           { name: "Pagamentos (Mercado Pago)", configured: Boolean(e.MERCADOPAGO_ACCESS_TOKEN), webhookSecret: Boolean(e.MERCADOPAGO_WEBHOOK_SECRET) },
-          { name: "Credencial de serviço (Firebase)", configured: Boolean(e.GOOGLE_SERVICE_ACCOUNT_JSON || e.FIRESTORE_BASE_URL) },
+          { name: "Banco de dados (Supabase)", configured: Boolean(e.SUPABASE_URL && e.SUPABASE_PUBLISHABLE_KEY), serviceKey: Boolean(e.SUPABASE_SECRET_KEY) },
           { name: "E-mail (Resend)", configured: false, note: "Não implementado" },
           { name: "Web Push", configured: false, note: "Não implementado" },
         ],

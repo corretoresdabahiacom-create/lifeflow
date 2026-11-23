@@ -1,8 +1,6 @@
-import { generateKeyPair, exportPKCS8 } from "jose";
 import { describe, expect, it } from "vitest";
 import { MercadoPagoProvider } from "../src/billing/mercadopago";
 import { PaymentProviderError, WebhookSignatureError } from "../src/billing/provider";
-import { clearServiceAccountTokenCache, serviceAccountToken } from "../src/system";
 
 /** Adaptador do Mercado Pago com `fetch` SIMULADO e HMAC real. Nada aqui toca o Mercado Pago de verdade. */
 
@@ -170,38 +168,5 @@ describe("MercadoPagoProvider (fetch simulado)", () => {
       const unconfigured = provider(mock([]).fetchImpl, null);
       await expect(unconfigured.verifyWebhook(req({ "x-signature": "ts=1,v1=00", "x-request-id": "r" }, { data: { id: "1" } }))).rejects.toMatchObject({ kind: "not_configured" });
     });
-  });
-});
-
-describe("token da conta de serviço", () => {
-  it("assina JWT RS256 com o escopo do Firestore, troca por token e usa cache", async () => {
-    clearServiceAccountTokenCache();
-    const { privateKey } = await generateKeyPair("RS256", { extractable: true });
-    const pem = await exportPKCS8(privateKey);
-    const raw = JSON.stringify({ client_email: "svc@proj.iam.gserviceaccount.com", private_key: pem, token_uri: "https://oauth.test/token" });
-    let calls = 0;
-    let assertion = "";
-    const fetchImpl = (async (_url: RequestInfo | URL, init?: RequestInit) => {
-      calls += 1;
-      assertion = new URLSearchParams(String(init?.body)).get("assertion") ?? "";
-      return json({ access_token: "ya29.token", expires_in: 3600 });
-    }) as typeof fetch;
-    expect(await serviceAccountToken(raw, fetchImpl, 1_000_000)).toBe("ya29.token");
-    expect(await serviceAccountToken(raw, fetchImpl, 1_000_000 + 60_000)).toBe("ya29.token");
-    expect(calls).toBe(1);
-    const claims = JSON.parse(atob(assertion.split(".")[1]!.replace(/-/g, "+").replace(/_/g, "/"))) as Record<string, unknown>;
-    expect(claims).toMatchObject({ iss: "svc@proj.iam.gserviceaccount.com", scope: "https://www.googleapis.com/auth/datastore" });
-    await serviceAccountToken(raw, fetchImpl, 1_000_000 + 4_000_000_0);
-    expect(calls).toBe(2);
-  });
-
-  it("JSON inválido ou falha na troca dá erro sem vazar a chave", async () => {
-    clearServiceAccountTokenCache();
-    await expect(serviceAccountToken("{não json", fetch)).rejects.toThrow();
-    const { privateKey } = await generateKeyPair("RS256", { extractable: true });
-    const raw = JSON.stringify({ client_email: "svc@p.iam", private_key: await exportPKCS8(privateKey) });
-    const failing = (async () => json({ error: "invalid_grant" }, 400)) as typeof fetch;
-    const error = await serviceAccountToken(raw, failing, 5).catch((e: unknown) => e);
-    expect(String((error as Error).message ?? error)).not.toContain("PRIVATE KEY");
   });
 });

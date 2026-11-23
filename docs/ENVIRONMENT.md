@@ -3,29 +3,29 @@
 Credenciais somente em secrets do ambiente. Nenhuma credencial real no Git.
 APIs pagas só com configuração explícita e autorização.
 
-## Fase 1
+## Banco e login (Supabase, D-011)
 
 | Variável | Onde | Uso | Segredo? |
 |---|---|---|---|
-| `FIREBASE_PROJECT_ID` | Worker (`wrangler.toml` vars) | Validação de `iss`/`aud` e caminho do Firestore | Não |
+| `SUPABASE_URL` | Worker (`wrangler.toml` vars) | Origem do PostgREST, de `iss` (`/auth/v1`) e da JWKS | Não |
+| `SUPABASE_PUBLISHABLE_KEY` | Worker (vars) | Chave publicável: vai em `apikey` junto do JWT do usuário | Não (pública) |
+| `SUPABASE_SECRET_KEY` | Worker (**secret**) | Chave `sb_secret_…` do caminho privilegiado restrito (webhook, painel, exclusão de conta). Ausente → `503 billing_not_configured` | **Sim** |
+| `JWKS_URL` | Worker (vars, opcional) | Sobrescreve a URL das chaves públicas (só testes; em produção a `/readyz` reprova) | Não |
 | `ALLOWED_ORIGIN` | Worker (vars) | Origem permitida no CORS | Não |
-| `FIRESTORE_BASE_URL` | Worker (vars, opcional) | Sobrescreve o endpoint do Firestore (testes/emulador) | Não |
-| `JWKS_URL` | Worker (vars, opcional) | Sobrescreve a URL das chaves públicas (testes) | Não |
-| `VITE_FIREBASE_API_KEY` | Frontend (`.env.local`) | Identificador público do app web | Não (público) |
-| `VITE_FIREBASE_AUTH_DOMAIN` | Frontend | Domínio de autenticação | Não |
-| `VITE_FIREBASE_PROJECT_ID` | Frontend | Projeto Firebase | Não |
-| `VITE_FIREBASE_APP_ID` | Frontend | Id do app web | Não |
+| `VITE_SUPABASE_URL` | Frontend (`.env.local`) | URL do projeto | Não (pública) |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Frontend | Chave publicável | Não (pública) |
 | `VITE_API_BASE_URL` | Frontend | URL do Worker | Não |
-| `VITE_USE_EMULATORS` | Frontend | `true` para usar emuladores locais | Não |
 
-## Variáveis futuras
+A chave **secreta** nunca vai ao navegador nem ao Git. O projeto Supabase precisa ter **chaves de assinatura assimétricas** (ES256/RS256) habilitadas:
+o Worker recusa JWT simétrico (HS256) de propósito.
 
-`EMAIL_*`, `VAPID_*`: secrets do Worker, definidos quando cada adaptador for implementado.
+Administrador do painel: `app_metadata.admin = true` no usuário (Dashboard → Authentication → Users → editar `app_metadata`, ou API de administração).
+O usuário comum não consegue alterar `app_metadata`.
 
 ## Desenvolvimento local
 
-Projeto de demonstração `demo-lifeflow` com emuladores do Firebase (sem credenciais reais).
-Os passos estão em `PHASE_01_FOUNDATION.md`.
+`supabase start` (Docker + Supabase CLI) sobe Postgres, GoTrue e PostgREST com as migrações de `supabase/migrations`. `supabase status -o env`
+mostra URL e chaves; ponha-as em `workers/api/.dev.vars` e `apps/web/.env.local`. Os testes `pnpm test` **não** precisam de Docker (usam PGlite).
 
 ## Variáveis do assistente (Fase 4)
 
@@ -36,14 +36,10 @@ Os passos estão em `PHASE_01_FOUNDATION.md`.
 | `LLM_PROVIDER` / `LLM_MODEL` / `LLM_BASE_URL` | var | `deepseek` / `deepseek-flash` / `https://api.deepseek.com` | Provedor do LLM |
 | `STT_PROVIDER` / `STT_MODEL` / `STT_BASE_URL` | var | `groq` / `whisper-large-v3-turbo` / `https://api.groq.com/openai/v1` | Transcrição |
 
-Definir secrets com `wrangler secret put NOME`; nunca no Git. As variáveis `LLM_API_KEY` e `STT_*` previstas antes
-foram substituídas por estas.
-
 ## Variáveis de SaaS (Fase 5)
 
 | Variável | Tipo | Descrição |
 |---|---|---|
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | **secret** | Conta de serviço do Firebase (caminho privilegiado restrito: webhook e painel). Sem ela e sem `FIRESTORE_BASE_URL`: `503 billing_not_configured` |
 | `MERCADOPAGO_ACCESS_TOKEN` | **secret** | Token do Mercado Pago. Ausente → `503 billing_not_configured` |
 | `MERCADOPAGO_WEBHOOK_SECRET` | **secret** | Segredo da assinatura do webhook. Ausente → webhooks recusados |
 | `PAYMENT_PROVIDER` | var | `mercadopago` (único implementado) |
@@ -51,19 +47,16 @@ foram substituídas por estas.
 | `WEB_BASE_URL` | var | URL do app (retorno do checkout: `/assinatura?retorno=1`) |
 | `API_PUBLIC_URL` | var | URL pública do Worker (notificação: `/webhooks/mercadopago`) |
 
-`AI_DEFAULT_PLAN` foi **removida**: o plano vem da assinatura. A claim `admin` é definida no Firebase Auth, não aqui.
-
-## Variáveis do deploy (Fase 6, `.github/workflows/deploy.yml`)
+## Variáveis do deploy (`.github/workflows/deploy.yml`)
 
 Por ambiente do GitHub (`staging`, `production`):
 
 | Nome | Tipo | Uso |
 |---|---|---|
-| `FIREBASE_PROJECT_ID`, `WEB_BASE_URL`, `API_PUBLIC_URL`, `PAGES_PROJECT` | variável | Worker (`--var`) e Pages |
-| `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_APP_ID` | variável (públicas) | build do app web |
+| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_PROJECT_REF`, `WEB_BASE_URL`, `API_PUBLIC_URL`, `PAGES_PROJECT` | variável | Worker (`--var`), build do app web e `supabase link` |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | secret | `wrangler deploy` / `pages deploy` |
-| `FIREBASE_DEPLOY_SA_JSON` | secret | publicar regras e índices |
-| `BACKUP_SA_JSON` (secret), `BACKUP_BUCKET`, `BACKUP_ENABLED` (variáveis) | backup diário | `backup.yml` |
+| `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD` | secret | `supabase link` + `supabase db push` |
+| `SUPABASE_DB_URL`, `BACKUP_PASSPHRASE` (secrets), `BACKUP_ENABLED` (variável) | backup diário | `backup.yml` |
 
-Secrets do **Worker** (nunca no GitHub nem no Git): `GOOGLE_SERVICE_ACCOUNT_JSON`, `DEEPSEEK_API_KEY`, `GROQ_API_KEY`,
+Secrets do **Worker** (nunca no GitHub nem no Git): `SUPABASE_SECRET_KEY`, `DEEPSEEK_API_KEY`, `GROQ_API_KEY`,
 `MERCADOPAGO_ACCESS_TOKEN`, `MERCADOPAGO_WEBHOOK_SECRET` (`wrangler secret put`). `GET /readyz` confere se estão presentes.
