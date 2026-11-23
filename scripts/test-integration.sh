@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 command -v supabase >/dev/null || { echo "Supabase CLI ausente (npm i -g supabase ou supabase/setup-cli)." >&2; exit 1; }
 
 # Chave de assinatura ASSIMÉTRICA do GoTrue local (não versionada).
-[ -f supabase/signing_keys.json ] || supabase gen signing-key --algorithm ES256 >/dev/null
+bash supabase/scripts/gen-signing-key.sh
 
 supabase start --exclude studio,imgproxy,vector,edge-runtime,realtime,storage-api,logflare,inbucket,mailpit 2>&1 | tail -5
 trap 'supabase stop --no-backup >/dev/null 2>&1 || true' EXIT

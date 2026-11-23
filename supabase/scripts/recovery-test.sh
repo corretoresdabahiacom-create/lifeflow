@@ -6,7 +6,7 @@ cd "$(dirname "$0")/../.."
 
 DB="supabase_db_lifeflow"
 psql_() { docker exec -i "$DB" psql -U postgres -v ON_ERROR_STOP=1 -At "$@"; }
-[ -f supabase/signing_keys.json ] || supabase gen signing-key --algorithm ES256 >/dev/null
+bash supabase/scripts/gen-signing-key.sh
 supabase start --exclude studio,imgproxy,vector,edge-runtime,realtime,storage-api,logflare,inbucket,mailpit >/dev/null
 trap 'supabase stop --no-backup >/dev/null 2>&1 || true' EXIT
 

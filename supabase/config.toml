@@ -24,10 +24,11 @@ enabled = true
 site_url = "http://localhost:5173"
 additional_redirect_urls = ["http://localhost:5173"]
 jwt_expiry = 3600
+minimum_password_length = 8
 enable_refresh_token_rotation = true
 enable_signup = true
 # JWTs ASSIMÉTRICOS (ES256): o Worker valida pela JWKS e recusa HS256 de propósito. O arquivo é gerado por
-# `supabase gen signing-key` (scripts/test-integration.sh) e NÃO é versionado.
+# `supabase/scripts/gen-signing-key.sh` e NÃO é versionado.
 signing_keys_path = "./signing_keys.json"
 
 [auth.email]
@@ -35,7 +36,7 @@ enable_signup = true
 double_confirm_changes = true
 # Local/testes: cadastro sem confirmar e-mail. EM PRODUÇÃO deixe a confirmação LIGADA (painel do Supabase).
 enable_confirmations = false
-min_password_length = 8
+# (a senha mínima do projeto real é configurada no painel: 8)
 
 [auth.sms]
 enable_signup = true
