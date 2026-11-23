@@ -216,7 +216,7 @@ export function defineAccountSuite(
       await w.A.post("/v1/account/delete", CONFIRM);
       w.payments.authorize(subId, PERIOD_END); // o provedor ainda manda eventos
       const late = await hook(w, "subscription", subId);
-      expect(late.status).toBe(200);
+      expect(late.status, await late.clone().text()).toBe(200);
       expect(((await late.json()) as { status: string }).status).toBe("ignored");
       expect(await options.rawClient(w).get(`subscriptions/${w.uidA}`)).toBeNull();
       expect((await w.A.get("/v1/billing/subscription")).body["subscription"]).toMatchObject({ status: "none", plan: "free" });

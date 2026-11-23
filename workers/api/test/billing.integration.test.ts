@@ -44,4 +44,4 @@ defineBillingSuite("assinaturas, limites e painel admin (Supabase real: GoTrue +
 
 defineAccountSuite("exportação e exclusão de conta (Supabase real: GoTrue + PostgREST + RLS)", stackWorld, { rawClient: (w) => w.raw, fake: false });
 
-defineSecuritySuite("segurança e isolamento entre usuários (Supabase real: GoTrue + PostgREST + RLS)", stackWorld);
+defineSecuritySuite("segurança e isolamento entre usuários (Supabase real: GoTrue + PostgREST + RLS)", stackWorld, { fake: false });

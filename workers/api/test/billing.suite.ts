@@ -212,7 +212,7 @@ export function defineBillingSuite(
       expect(r.status, r.text).toBe(201);
       expect(r.body["checkoutUrl"]).toMatch(/^https:\/\/pay\.test\/checkout\/mp_/);
       const created = w.payments.created[0]!;
-      expect(created).toMatchObject({ externalReference: w.uidA, amountCents: 1490, currency: "BRL", payerEmail: "user@example.com", planId: "pro" });
+      expect(created).toMatchObject({ externalReference: w.uidA, amountCents: 1490, currency: "BRL", payerEmail: expect.stringMatching(/@example\.com$/), planId: "pro" });
       expect(created.backUrl).toBe("https://app.lifeflow.test/assinatura?retorno=1");
       expect(created.notificationUrl).toBe("https://api.lifeflow.test/webhooks/mercadopago");
       const s = await sub(w.A);

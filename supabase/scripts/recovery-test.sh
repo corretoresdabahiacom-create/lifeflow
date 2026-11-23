@@ -35,7 +35,7 @@ psql_ -c "truncate public.plans, public.webhook_events, public.admin_logs; trunc
 [ "$(digest)" != "$BEFORE" ] || { echo "FALHA: os dados não foram apagados" >&2; exit 1; }
 
 echo "3) restauração"
-docker exec "$DB" pg_restore -U postgres --data-only --disable-triggers --no-owner -d postgres /tmp/lifeflow-auth.dump
+docker exec "$DB" pg_restore -U postgres --data-only --no-owner -d postgres /tmp/lifeflow-auth.dump
 docker exec "$DB" pg_restore -U postgres --data-only --disable-triggers --no-owner -d postgres /tmp/lifeflow.dump
 
 AFTER="$(digest)"

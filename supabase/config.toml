@@ -32,14 +32,14 @@ enable_signup = true
 signing_keys_path = "./signing_keys.json"
 
 [auth.email]
-enable_signup = true
+enabled = true
 double_confirm_changes = true
 # Local/testes: cadastro sem confirmar e-mail. EM PRODUÇÃO deixe a confirmação LIGADA (painel do Supabase).
 enable_confirmations = false
 # (a senha mínima do projeto real é configurada no painel: 8)
 
 [auth.sms]
-enable_signup = true
+enabled = true
 enable_confirmations = false
 [auth.sms.test_otp]
 

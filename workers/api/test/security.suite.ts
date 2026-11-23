@@ -14,6 +14,8 @@ const code = (r: Reply) => (r.body["error"] as { code: string } | undefined)?.co
 export function defineSecuritySuite(
   title: string,
   makeWorld: (signer: Signer, options: { noEmailForA?: boolean }) => BillingWorld | Promise<BillingWorld>,
+  /** `fake: false` = Supabase real: os tokens de teste (chave própria) não são aceitos, só os emitidos pelo GoTrue. */
+  suiteOptions: { fake: boolean } = { fake: true },
 ): void {
   describe(title, () => {
     let signer: Signer;
@@ -69,7 +71,7 @@ export function defineSecuritySuite(
       }
     });
 
-    it("tokens inválidos: expirado, audiência/emissor errados, sem sub, esquema errado → 401", async () => {
+    it.runIf(suiteOptions.fake)("tokens inválidos: expirado, audiência/emissor errados, sem sub, esquema errado → 401", async () => {
       const w = await world();
       const now = Math.floor(Date.now() / 1000);
       const bad = [
@@ -83,6 +85,17 @@ export function defineSecuritySuite(
       const good = await signToken(signer, { uid: "u1" });
       expect((await w.app("/v1/me", { headers: { Authorization: `Basic ${good}` } })).status).toBe(401);
       expect((await w.app("/v1/me", {}, good)).status).toBe(200);
+    });
+
+    it.runIf(!suiteOptions.fake)("tokens (Supabase real): o JWT do GoTrue vale; assinatura adulterada e esquema errado → 401", async () => {
+      const w = await world();
+      const real = w.A.token;
+      expect((await w.app("/v1/me", {}, real)).status).toBe(200);
+      const [h, p, s] = real.split(".") as [string, string, string];
+      const tampered = `${h}.${p}.${s.slice(0, -4)}${s.endsWith("AAAA") ? "BBBB" : "AAAA"}`;
+      expect((await w.app("/v1/me", {}, tampered)).status).toBe(401);
+      expect((await w.app("/v1/me", { headers: { Authorization: `Basic ${real}` } })).status).toBe(401);
+      expect((await w.app("/v1/me")).status).toBe(401);
     });
 
     it("o uid vem só do token: cabeçalhos/consulta/corpo com outro uid não mudam quem é o usuário", async () => {
@@ -131,7 +144,7 @@ export function defineSecuritySuite(
       }
     });
 
-    it("corpo malformado, tipo errado, grande demais ou com campos extras é recusado sem erro 500", async () => {
+    it.runIf(suiteOptions.fake)("corpo malformado, tipo errado, grande demais ou com campos extras é recusado sem erro 500", async () => {
       const w = await world();
       const post = async (body: BodyInit, extra: Record<string, string> = {}) => {
         const token = await signToken(signer, { uid: w.uidA });

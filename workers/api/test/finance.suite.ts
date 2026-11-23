@@ -26,7 +26,7 @@ export interface Reply {
 export class Client {
   constructor(
     private readonly app: (path: string, init?: RequestInit, token?: string) => Promise<Response>,
-    private readonly token: string,
+    readonly token: string,
   ) {}
 
   async send(method: string, path: string, body?: unknown, headers: Record<string, string> = {}): Promise<Reply> {
